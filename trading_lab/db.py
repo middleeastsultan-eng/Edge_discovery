@@ -25,8 +25,15 @@ CREATE TABLE IF NOT EXISTS experiments (
     validation_stats JSONB,
     test_stats JSONB,
     walk_forward JSONB,
-    monte_carlo JSONB
+    monte_carlo JSONB,
+    cost_stress JSONB,
+    parameter_stability JSONB,
+    robustness_score JSONB
 );
+
+ALTER TABLE experiments ADD COLUMN IF NOT EXISTS cost_stress JSONB;
+ALTER TABLE experiments ADD COLUMN IF NOT EXISTS parameter_stability JSONB;
+ALTER TABLE experiments ADD COLUMN IF NOT EXISTS robustness_score JSONB;
 
 CREATE TABLE IF NOT EXISTS experiment_trades (
     id SERIAL PRIMARY KEY,
@@ -62,6 +69,12 @@ def _clauses_to_json(clauses) -> str:
     return json.dumps([dataclasses.asdict(c) for c in clauses])
 
 
+def _df_to_json(df: pd.DataFrame | None) -> str | None:
+    if df is None or not len(df):
+        return None
+    return df.to_json(orient="records", date_format="iso")
+
+
 def save_experiment(
     symbol: str,
     interval: str,
@@ -74,17 +87,19 @@ def save_experiment(
     test_stats: dict | None = None,
     walk_forward: pd.DataFrame | None = None,
     monte_carlo: dict | None = None,
+    cost_stress: pd.DataFrame | None = None,
+    parameter_stability: dict | None = None,
+    robustness_score: dict | None = None,
 ) -> int:
-    wf_json = json.loads(walk_forward.to_json(orient="records", date_format="iso")) if walk_forward is not None and len(walk_forward) else None
-
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO experiments
                     (symbol, interval, start_date, end_date, rule, clauses,
-                     discovery_stats, validation_stats, test_stats, walk_forward, monte_carlo)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     discovery_stats, validation_stats, test_stats, walk_forward, monte_carlo,
+                     cost_stress, parameter_stability, robustness_score)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
@@ -93,8 +108,11 @@ def save_experiment(
                     json.dumps(discovery_stats),
                     json.dumps(validation_stats) if validation_stats else None,
                     json.dumps(test_stats) if test_stats else None,
-                    json.dumps(wf_json) if wf_json else None,
+                    _df_to_json(walk_forward),
                     json.dumps(monte_carlo) if monte_carlo else None,
+                    _df_to_json(cost_stress),
+                    json.dumps(parameter_stability) if parameter_stability else None,
+                    json.dumps(robustness_score) if robustness_score else None,
                 ),
             )
             experiment_id = cur.fetchone()[0]

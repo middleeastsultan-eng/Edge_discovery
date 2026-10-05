@@ -50,6 +50,32 @@ export type Experiment = {
     max_drawdown_r_p95: number;
     prob_final_negative: number;
   } | null;
+  cost_stress: Array<{
+    cost_multiplier: number;
+  } & TradeStats> | null;
+  parameter_stability: {
+    score: number;
+    perturbations: Array<{
+      clause_index: number;
+      feature: string;
+      step_frac: number;
+      perturbed_value: number;
+    } & TradeStats>;
+  } | null;
+  robustness_score: {
+    total: number;
+    components: {
+      expectancy: number;
+      oos_consistency: number;
+      walk_forward_stability: number;
+      parameter_stability: number;
+      cost_sensitivity: number;
+      sample_size: number;
+      drawdown: number;
+      overfitting_resistance: number;
+    };
+    red_flags: string[];
+  } | null;
 };
 
 export type ExperimentTrade = {

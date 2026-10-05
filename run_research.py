@@ -11,9 +11,19 @@ import argparse
 from trading_lab import db
 from trading_lab.backtest import BacktestConfig
 from trading_lab.data import get_candles
-from trading_lab.discovery import search
+from trading_lab.discovery import Candidate, search
 from trading_lab.features import build_features
-from trading_lab.validate import chronological_split, evaluate_candidate, monte_carlo, walk_forward
+from trading_lab.metrics import TradeStats
+from trading_lab.validate import (
+    chronological_split,
+    cost_stress,
+    evaluate_candidate,
+    monte_carlo,
+    parameter_perturbation,
+    parameter_stability_score,
+    robustness_score,
+    walk_forward,
+)
 
 
 def main():
@@ -52,9 +62,18 @@ def main():
     print(results.head(args.top_k)[["rule", "n_trades", "win_rate", "expectancy_r", "profit_factor", "max_drawdown_r"]].to_string(index=False))
 
     best = results.iloc[0]
-    candidate = best["clauses"]
-    from trading_lab.discovery import Candidate
-    cand_obj = Candidate(clauses=candidate)
+    clauses = best["clauses"]
+    cand_obj = Candidate(clauses=clauses)
+    discovery_stats = TradeStats(
+        n_trades=int(best["n_trades"]),
+        win_rate=float(best["win_rate"]),
+        expectancy_r=float(best["expectancy_r"]),
+        profit_factor=float(best["profit_factor"]),
+        sharpe=float(best["sharpe"]),
+        max_drawdown_r=float(best["max_drawdown_r"]),
+        avg_win_r=float(best["avg_win_r"]),
+        avg_loss_r=float(best["avg_loss_r"]),
+    )
 
     print(f"\n=== Validating best candidate: {best['rule']} ===")
 
@@ -68,11 +87,30 @@ def main():
     wf = walk_forward(feats, cand_obj, n_windows=6, config=config)
     print(wf[["window", "start", "end", "n_trades", "win_rate", "expectancy_r", "profit_factor"]].to_string(index=False))
 
-    if len(test_trades):
+    mc = monte_carlo(test_trades["r_multiple"]) if len(test_trades) else None
+    if mc:
         print("\nMonte Carlo (bootstrap resample of out-of-sample trades, 5000 sims):")
-        mc = monte_carlo(test_trades["r_multiple"])
         for k, v in mc.items():
             print(f"  {k}: {v:.4f}")
+
+    print("\nCost stress test (fees + slippage multiplied up) on the final test set:")
+    cs = cost_stress(test_df, cand_obj, config)
+    print(cs[["cost_multiplier", "n_trades", "expectancy_r", "profit_factor"]].to_string(index=False))
+
+    print("\nParameter perturbation (nudging each threshold, on the discovery set):")
+    pert = parameter_perturbation(discovery_df, cand_obj, config)
+    print(pert[["feature", "step_frac", "perturbed_value", "n_trades", "expectancy_r"]].to_string(index=False))
+    stability = parameter_stability_score(pert)
+    print(f"  parameter stability score: {stability:.2f} (fraction of perturbations that stayed profitable)")
+
+    score = robustness_score(discovery_stats, val_stats, test_stats, wf, stability, cs)
+    print(f"\nRobustness score: {score['total']}/100")
+    for k, v in score["components"].items():
+        print(f"  {k}: {v}")
+    if score["red_flags"]:
+        print("  Red flags:")
+        for flag in score["red_flags"]:
+            print(f"    - {flag}")
 
     print("\nReminder: discovery-set numbers are optimistic by construction (this is what")
     print("the search was optimizing for). Trust the validation/test/walk-forward numbers,")
@@ -80,19 +118,21 @@ def main():
 
     if not args.no_save:
         print("\nSaving experiment to database ...")
-        mc = monte_carlo(test_trades["r_multiple"]) if len(test_trades) else None
         experiment_id = db.save_experiment(
             symbol=args.symbol,
             interval=args.interval,
             start_date=args.start,
             end_date=args.end,
             rule=best["rule"],
-            clauses=candidate,
-            discovery_stats=best.drop(["rule", "clauses"]).to_dict(),
+            clauses=clauses,
+            discovery_stats=discovery_stats.as_dict(),
             validation_stats=val_stats.as_dict(),
             test_stats=test_stats.as_dict(),
             walk_forward=wf,
             monte_carlo=mc,
+            cost_stress=cs,
+            parameter_stability={"score": stability, "perturbations": pert.to_dict(orient="records")},
+            robustness_score=score,
         )
         db.save_trades(experiment_id, val_trades, "validation")
         db.save_trades(experiment_id, test_trades, "test")

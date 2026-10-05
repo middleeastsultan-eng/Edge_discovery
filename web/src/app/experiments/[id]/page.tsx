@@ -1,13 +1,14 @@
 import Link from "next/link";
 import type { ElementType, ReactNode } from "react";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Dices, ShieldCheck, FlaskConical, LineChart, History, Dice5 } from "lucide-react";
+import { ArrowLeft, Dices, ShieldCheck, FlaskConical, LineChart, History, Dice5, DollarSign, SlidersHorizontal } from "lucide-react";
 import { supabase, type Experiment, type ExperimentTrade } from "@/lib/supabase";
 import { verdict } from "@/lib/evaluate";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StatTile } from "@/components/StatTile";
 import { StatsGrid } from "@/components/StatsGrid";
 import { EquityCurve } from "@/components/EquityCurve";
+import { RobustnessScore } from "@/components/RobustnessScore";
 import { formatDateTime, formatNum, formatPct, formatR } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -77,6 +78,12 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
         </div>
       </div>
 
+      {exp.robustness_score && (
+        <section className="rounded-xl border border-white/10 bg-[#1a1a19] p-4 shadow-sm">
+          <RobustnessScore score={exp.robustness_score} />
+        </section>
+      )}
+
       <section className="rounded-xl border border-white/10 bg-[#1a1a19] p-4 shadow-sm">
         <SectionHeading icon={Dices}>
           Discovery set
@@ -140,6 +147,75 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
           </div>
           <p className="text-xs text-[#898781] mt-3">
             The rule is frozen across windows — this checks consistency over time, not re-optimization.
+          </p>
+        </section>
+      )}
+
+      {exp.cost_stress && exp.cost_stress.length > 0 && (
+        <section className="rounded-xl border border-white/10 bg-[#1a1a19] p-4 shadow-sm">
+          <SectionHeading icon={DollarSign}>Cost stress — fees and slippage multiplied up</SectionHeading>
+          <div className="grid grid-cols-3 gap-3">
+            {exp.cost_stress.map((c) => (
+              <StatTile
+                key={c.cost_multiplier}
+                label={`${c.cost_multiplier}x costs`}
+                value={formatR(c.expectancy_r)}
+                tone={c.expectancy_r > 0 ? "good" : "bad"}
+              />
+            ))}
+          </div>
+          <p className="text-xs text-[#898781] mt-3">
+            If expectancy turns negative as costs scale up, part of the edge was a transaction-cost
+            artifact rather than real signal.
+          </p>
+        </section>
+      )}
+
+      {exp.parameter_stability && exp.parameter_stability.perturbations.length > 0 && (
+        <section className="rounded-xl border border-white/10 bg-[#1a1a19] p-4 shadow-sm">
+          <SectionHeading icon={SlidersHorizontal}>
+            Parameter perturbation
+            <span className="font-normal text-[#898781]/70 normal-case">
+              (stability score: {formatPct(exp.parameter_stability.score)})
+            </span>
+          </SectionHeading>
+          <div className="overflow-x-auto rounded-lg border border-white/10">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-white/10 bg-white/[0.02] text-left text-xs text-[#898781]">
+                  <th className="px-4 py-3 font-medium">Feature</th>
+                  <th className="px-4 py-3 font-medium text-right">Nudge</th>
+                  <th className="px-4 py-3 font-medium text-right">New threshold</th>
+                  <th className="px-4 py-3 font-medium text-right">Trades</th>
+                  <th className="px-4 py-3 font-medium text-right">Expectancy</th>
+                </tr>
+              </thead>
+              <tbody>
+                {exp.parameter_stability.perturbations.map((p, i) => (
+                  <tr key={i} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+                    <td className="px-4 py-3 text-[#c3c2b7]" style={{ fontFamily: "var(--font-geist-mono)" }}>
+                      {p.feature}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-[#898781]">
+                      {p.step_frac > 0 ? "+" : ""}
+                      {(p.step_frac * 100).toFixed(0)}%σ
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-[#c3c2b7]">{formatNum(p.perturbed_value, 4)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums text-[#c3c2b7]">{p.n_trades}</td>
+                    <td
+                      className="px-4 py-3 text-right tabular-nums"
+                      style={{ color: p.expectancy_r > 0 ? "#0ca30c" : p.expectancy_r < 0 ? "#d03b3b" : undefined }}
+                    >
+                      {formatR(p.expectancy_r)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-[#898781] mt-3">
+            Run on the discovery set — this asks whether the threshold sits in a region that works, or
+            whether it's an isolated spike that happened to fit the noise.
           </p>
         </section>
       )}

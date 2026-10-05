@@ -6,11 +6,13 @@ the rule is frozen (found on discovery data) and never changes once validation s
 
 from __future__ import annotations
 
+import dataclasses
+
 import numpy as np
 import pandas as pd
 
 from .backtest import BacktestConfig, run_backtest
-from .discovery import Candidate
+from .discovery import Candidate, Clause
 from .metrics import TradeStats, compute_stats
 
 
@@ -86,3 +88,172 @@ def monte_carlo(r_multiples: np.ndarray | pd.Series, n_sims: int = 5000, seed: i
         "max_drawdown_r_p95": float(np.percentile(max_dds, 95)),
         "prob_final_negative": float((finals < 0).mean()),
     }
+
+
+def cost_stress(
+    df: pd.DataFrame,
+    candidate: Candidate,
+    base_config: BacktestConfig = BacktestConfig(),
+    multipliers: tuple[float, ...] = (1.0, 2.0, 3.0),
+) -> pd.DataFrame:
+    """Re-run the frozen candidate with fees and slippage multiplied up, to see how much
+    of the edge is a transaction-cost artifact rather than real signal.
+    """
+    signal = candidate.signal(df)
+    rows = []
+    for mult in multipliers:
+        config = dataclasses.replace(
+            base_config,
+            fee_bps=base_config.fee_bps * mult,
+            slippage_bps=base_config.slippage_bps * mult,
+        )
+        trades = run_backtest(df, signal, config)
+        stats = compute_stats(trades["r_multiple"]) if len(trades) else compute_stats([])
+        rows.append({"cost_multiplier": mult, **stats.as_dict()})
+    return pd.DataFrame(rows)
+
+
+def parameter_perturbation(
+    df: pd.DataFrame,
+    candidate: Candidate,
+    config: BacktestConfig = BacktestConfig(),
+    step_fracs: tuple[float, ...] = (-0.10, -0.05, 0.05, 0.10),
+) -> pd.DataFrame:
+    """Nudge each clause's threshold by +/- a fraction of that feature's std and re-run.
+
+    A real edge tends to occupy a region of parameter space, not a single exact value.
+    If expectancy collapses the moment a threshold moves slightly, the original value
+    was probably fit to noise in the discovery set rather than a real relationship.
+    Run this on the SAME data the candidate was discovered on -- it's asking whether
+    that data supports a region or just one lucky point, not testing generalization
+    (validation/test already do that separately).
+    """
+    rows = []
+    for i, clause in enumerate(candidate.clauses):
+        scale = df[clause.feature].std()
+        for frac in step_fracs:
+            perturbed_clauses = list(candidate.clauses)
+            perturbed_clauses[i] = Clause(
+                feature=clause.feature, op=clause.op, value=clause.value + frac * scale
+            )
+            perturbed = Candidate(clauses=perturbed_clauses)
+            signal = perturbed.signal(df)
+            trades = run_backtest(df, signal, config)
+            stats = compute_stats(trades["r_multiple"]) if len(trades) else compute_stats([])
+            rows.append({
+                "clause_index": i,
+                "feature": clause.feature,
+                "step_frac": frac,
+                "perturbed_value": perturbed_clauses[i].value,
+                **stats.as_dict(),
+            })
+    return pd.DataFrame(rows)
+
+
+def parameter_stability_score(perturbation_df: pd.DataFrame, min_trades: int = 10) -> float:
+    """Fraction of perturbations (with enough trades to be meaningful) that kept a
+    positive expectancy. 1.0 = fully stable region, 0.0 = every nudge broke it.
+    """
+    usable = perturbation_df[perturbation_df["n_trades"] >= min_trades]
+    if usable.empty:
+        return 0.0
+    return float((usable["expectancy_r"] > 0).mean())
+
+
+def _clamp(x: float, lo: float = 0.0, hi: float = 100.0) -> float:
+    return max(lo, min(hi, x))
+
+
+def robustness_score(
+    discovery_stats: TradeStats,
+    validation_stats: TradeStats,
+    test_stats: TradeStats,
+    walk_forward_df: pd.DataFrame,
+    param_stability: float,
+    cost_stress_df: pd.DataFrame,
+) -> dict:
+    """Composite 0-100 score across the dimensions that distinguish a real edge from
+    an overfit one. Components are shown individually -- the total is a summary, not
+    proof of profitability.
+    """
+    red_flags: list[str] = []
+
+    # 1. Out-of-sample expectancy, scaled so 0R=50, +0.3R=100, -0.3R=0.
+    expectancy_score = _clamp(50 + (test_stats.expectancy_r / 0.3) * 50)
+
+    # 2. Does the edge hold in both independent splits?
+    val_ok = validation_stats.n_trades >= 10 and validation_stats.expectancy_r > 0
+    test_ok = test_stats.n_trades >= 10 and test_stats.expectancy_r > 0
+    oos_consistency_score = 100.0 if (val_ok and test_ok) else 50.0 if (val_ok or test_ok) else 0.0
+    if not val_ok:
+        red_flags.append("Validation set expectancy is not positive (or has too few trades)")
+    if not test_ok:
+        red_flags.append("Final test set expectancy is not positive (or has too few trades)")
+
+    # 3. Walk-forward consistency.
+    if walk_forward_df is not None and len(walk_forward_df):
+        usable_windows = walk_forward_df[walk_forward_df["n_trades"] >= 5]
+        wf_score = 100.0 * (usable_windows["expectancy_r"] > 0).mean() if len(usable_windows) else 0.0
+        if wf_score < 50:
+            red_flags.append("Less than half of walk-forward windows were profitable")
+    else:
+        wf_score = 0.0
+
+    # 4. Parameter stability.
+    param_score = param_stability * 100
+    if param_score < 50:
+        red_flags.append("Edge breaks down under small parameter perturbations (possible noise fit)")
+
+    # 5. Cost sensitivity -- does it survive 2x/3x realistic fees and slippage?
+    if cost_stress_df is not None and len(cost_stress_df):
+        by_mult = cost_stress_df.set_index("cost_multiplier")["expectancy_r"]
+        if by_mult.get(3.0, -1) > 0:
+            cost_score = 100.0
+        elif by_mult.get(2.0, -1) > 0:
+            cost_score = 60.0
+            red_flags.append("Edge does not survive 3x transaction costs")
+        elif by_mult.get(1.0, -1) > 0:
+            cost_score = 30.0
+            red_flags.append("Edge does not survive 2x transaction costs")
+        else:
+            cost_score = 0.0
+            red_flags.append("Edge is not profitable even at base transaction costs")
+    else:
+        cost_score = 0.0
+
+    # 6. Sample size.
+    total_oos_trades = validation_stats.n_trades + test_stats.n_trades
+    sample_score = _clamp(100 * total_oos_trades / 100)
+    if total_oos_trades < 30:
+        red_flags.append(f"Only {total_oos_trades} combined validation+test trades -- thin sample")
+
+    # 7. Drawdown (in R).
+    drawdown_score = _clamp(100 - test_stats.max_drawdown_r * 10)
+
+    # 8. Degradation from discovery to out-of-sample (the overfitting tell).
+    if discovery_stats.expectancy_r > 0:
+        retained = test_stats.expectancy_r / discovery_stats.expectancy_r
+        if retained >= 0.5:
+            degradation_score = 100.0
+        elif retained > 0:
+            degradation_score = 50.0
+        else:
+            degradation_score = 0.0
+    else:
+        degradation_score = 0.0
+    if discovery_stats.expectancy_r > 0 and test_stats.expectancy_r < discovery_stats.expectancy_r * 0.5:
+        red_flags.append("Test expectancy is less than half of discovery expectancy -- likely overfitting")
+
+    components = {
+        "expectancy": round(expectancy_score, 1),
+        "oos_consistency": round(oos_consistency_score, 1),
+        "walk_forward_stability": round(wf_score, 1),
+        "parameter_stability": round(param_score, 1),
+        "cost_sensitivity": round(cost_score, 1),
+        "sample_size": round(sample_score, 1),
+        "drawdown": round(drawdown_score, 1),
+        "overfitting_resistance": round(degradation_score, 1),
+    }
+    total = round(sum(components.values()) / len(components), 1)
+
+    return {"total": total, "components": components, "red_flags": red_flags}
