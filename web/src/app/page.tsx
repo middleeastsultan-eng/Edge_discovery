@@ -40,7 +40,7 @@ export default async function WelcomePage() {
       >
         <div
           aria-hidden
-          className="absolute inset-0 -z-20"
+          className={heroImage ? "absolute inset-0 -z-20 animate-ken-burns" : "absolute inset-0 -z-20"}
           style={
             heroImage
               ? { backgroundImage: `url(${heroImage})`, backgroundSize: "cover", backgroundPosition: "center" }
@@ -49,7 +49,7 @@ export default async function WelcomePage() {
         />
         <div aria-hidden className="absolute inset-0 -z-10" style={{ backgroundColor: "color-mix(in srgb, var(--tl-page) 78%, transparent)" }} />
 
-        <div className="relative max-w-2xl">
+        <div className="relative max-w-2xl animate-in fade-in slide-in-from-bottom-4 duration-700">
           <span
             className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold tracking-wide"
             style={{ backgroundColor: ACCENT, color: ACCENT_FOREGROUND }}
@@ -71,7 +71,7 @@ export default async function WelcomePage() {
               <Link
                 key={href}
                 href={href}
-                className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors"
+                className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all hover:-translate-y-0.5 hover:shadow-md"
                 style={
                   primary
                     ? { backgroundColor: ACCENT, color: ACCENT_FOREGROUND }
@@ -80,14 +80,14 @@ export default async function WelcomePage() {
               >
                 <Icon size={15} />
                 {label}
-                <ArrowRight size={14} />
+                <ArrowRight size={14} className="transition-transform group-hover:translate-x-0.5" />
               </Link>
             ))}
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 animate-in fade-in slide-in-from-bottom-2 duration-700 delay-150 fill-mode-both">
         <StatTile label="Total experiments" value={String(experiments.length)} icon={FlaskConical} />
         <StatTile label={`Tracked (score ≥ ${TRACKING_MIN_SCORE})`} value={String(tracked.length)} icon={ShieldCheck} />
         <StatTile

@@ -34,7 +34,14 @@ function ForwardStatusBadge({ status }: { status: ForwardStatus }) {
       className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium whitespace-nowrap"
       style={{ color: style.color, borderColor: tint(style.color, 25), backgroundColor: tint(style.color, 10) }}
     >
-      <span aria-hidden>{style.icon}</span>
+      {status === "promoted" ? (
+        <span className="relative inline-flex h-2 w-2" aria-hidden>
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" style={{ backgroundColor: style.color }} />
+          <span className="relative inline-flex h-2 w-2 rounded-full" style={{ backgroundColor: style.color }} />
+        </span>
+      ) : (
+        <span aria-hidden>{style.icon}</span>
+      )}
       {style.label}
     </span>
   );

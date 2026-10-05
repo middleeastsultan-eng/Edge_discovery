@@ -2,11 +2,11 @@ import Link from "next/link";
 import { ArrowUpRight, MessageSquare, ExternalLink } from "lucide-react";
 import { supabase, type RedditStrategy, type Experiment } from "@/lib/supabase";
 import { StatTile } from "@/components/StatTile";
-import { PageGlow } from "@/components/PageGlow";
+import { getHeroImage } from "@/lib/pexels";
 import { formatDateTime, formatNum } from "@/lib/format";
 import {
   TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, BORDER_SOFT,
-  STATUS_GOOD, STATUS_WARNING, STATUS_CRITICAL, TABLE_HEADER_BG, tint,
+  STATUS_GOOD, STATUS_WARNING, STATUS_CRITICAL, TABLE_HEADER_BG, ACCENT, tint,
 } from "@/lib/theme";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +33,8 @@ function StatusBadge({ status }: { status: Status }) {
 }
 
 export default async function CommunityPage() {
-  const [{ data: strategyData, error }, { data: expData }] = await Promise.all([
+  const [headerImage, { data: strategyData, error }, { data: expData }] = await Promise.all([
+    getHeroImage("online community discussion forum"),
     supabase.from("reddit_strategies").select("*").order("fetched_at", { ascending: false }).limit(100),
     supabase.from("experiments").select("id, symbol, interval, robustness_score, reddit_strategy_id").eq("origin", "reddit"),
   ]);
@@ -61,9 +62,27 @@ export default async function CommunityPage() {
 
   return (
     <div className="space-y-8">
-      <div className="relative">
-        <PageGlow />
-        <h1 className="text-2xl font-semibold mb-1.5" style={{ color: TEXT_PRIMARY }}>
+      <div
+        className="relative overflow-hidden rounded-2xl px-6 py-10 sm:px-10 sm:py-14 shadow-sm animate-in fade-in duration-700"
+        style={{ border: `1px solid ${BORDER}` }}
+      >
+        {headerImage && (
+          <>
+            <div
+              aria-hidden
+              className="absolute inset-0 -z-20 animate-ken-burns"
+              style={{ backgroundImage: `url(${headerImage})`, backgroundSize: "cover", backgroundPosition: "center" }}
+            />
+            <div aria-hidden className="absolute inset-0 -z-10" style={{ backgroundColor: "color-mix(in srgb, var(--tl-page) 80%, transparent)" }} />
+          </>
+        )}
+        <span
+          className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide"
+          style={{ backgroundColor: tint(ACCENT, 15), color: ACCENT }}
+        >
+          FROM REDDIT
+        </span>
+        <h1 className="text-2xl font-semibold mt-3 mb-1.5" style={{ color: TEXT_PRIMARY }}>
           Community
         </h1>
         <p className="text-sm max-w-2xl" style={{ color: TEXT_MUTED }}>

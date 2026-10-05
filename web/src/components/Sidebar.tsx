@@ -73,11 +73,14 @@ export function Sidebar({ settings }: { settings: AgentSettings | null }) {
             className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs"
             style={{ backgroundColor: tint(TEXT_MUTED, 8), color: TEXT_SECONDARY }}
           >
-            <Circle
-              size={7}
-              fill={settings.paused ? STATUS_CRITICAL : STATUS_GOOD}
-              style={{ color: settings.paused ? STATUS_CRITICAL : STATUS_GOOD }}
-            />
+            {settings.paused ? (
+              <Circle size={7} fill={STATUS_CRITICAL} style={{ color: STATUS_CRITICAL }} />
+            ) : (
+              <span className="relative inline-flex h-[7px] w-[7px]" aria-hidden>
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" style={{ backgroundColor: STATUS_GOOD }} />
+                <span className="relative inline-flex h-[7px] w-[7px] rounded-full" style={{ backgroundColor: STATUS_GOOD }} />
+              </span>
+            )}
             {settings.paused ? "Research loop paused" : `Research loop running · ${settings.max_workers} worker(s)`}
           </div>
         )}

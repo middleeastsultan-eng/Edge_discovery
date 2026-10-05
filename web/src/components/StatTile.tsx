@@ -26,7 +26,7 @@ export function StatTile({
 
   return (
     <div
-      className="group rounded-2xl px-4 py-3.5 shadow-sm transition-colors"
+      className="group rounded-2xl px-4 py-3.5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md animate-in fade-in slide-in-from-bottom-1 duration-500 fill-mode-both"
       style={{ backgroundColor: SURFACE, border: `1px solid ${BORDER}` }}
     >
       <div className="flex items-center justify-between mb-2">
