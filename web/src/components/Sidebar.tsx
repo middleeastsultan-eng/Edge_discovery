@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FlaskConical, Activity, Circle } from "lucide-react";
+import { FlaskConical, Activity, Radio, Circle } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import type { AgentSettings } from "@/lib/supabase";
 import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, BORDER, STATUS_GOOD, STATUS_CRITICAL, ACCENT, tint } from "@/lib/theme";
@@ -11,6 +11,7 @@ import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, BORDER, STATUS_GOOD, STATUS_C
 const LINKS = [
   { href: "/", label: "Experiments", icon: FlaskConical },
   { href: "/research", label: "Research Health", icon: Activity },
+  { href: "/live", label: "Live Signals", icon: Radio },
 ];
 
 export function Sidebar({ settings }: { settings: AgentSettings | null }) {

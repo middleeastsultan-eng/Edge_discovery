@@ -30,6 +30,7 @@ export type Experiment = {
   created_at: string;
   symbol: string;
   interval: string;
+  source: string | null;
   start_date: string;
   end_date: string;
   rule: string;
@@ -133,4 +134,21 @@ export type ExperimentTrade = {
   exit_reason: string;
   r_multiple: number;
   bars_held: number;
+};
+
+// A proven (robustness_score.total === 100) pattern's continuous forward/paper-trading
+// verdict -- recomputed on every live check, not a one-time gate. See trading_lab/live.py.
+export type ForwardValidation = {
+  experiment_id: number;
+  status: "tracking" | "promoted";
+  forward_stats: TradeStats | null;
+  promoted_at: string | null;
+  updated_at: string;
+};
+
+export type ForwardSignalAlert = {
+  id: number;
+  experiment_id: number;
+  bar_time: string;
+  sent_at: string;
 };

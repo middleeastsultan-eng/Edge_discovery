@@ -9,6 +9,7 @@ import { TEXT_PRIMARY, TEXT_SECONDARY, BORDER } from "@/lib/theme";
 const LINKS = [
   { href: "/", label: "Experiments" },
   { href: "/research", label: "Research Health" },
+  { href: "/live", label: "Live Signals" },
 ];
 
 export function MobileNav() {
