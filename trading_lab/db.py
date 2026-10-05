@@ -1,0 +1,137 @@
+"""Persistence layer: stores each research run's candidate + validation results in Postgres (Supabase)."""
+
+from __future__ import annotations
+
+import dataclasses
+import json
+
+import pandas as pd
+import psycopg2
+import psycopg2.extras
+
+from .config import DATABASE_URL
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS experiments (
+    id SERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    symbol TEXT NOT NULL,
+    interval TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    rule TEXT NOT NULL,
+    clauses JSONB NOT NULL,
+    discovery_stats JSONB,
+    validation_stats JSONB,
+    test_stats JSONB,
+    walk_forward JSONB,
+    monte_carlo JSONB
+);
+
+CREATE TABLE IF NOT EXISTS experiment_trades (
+    id SERIAL PRIMARY KEY,
+    experiment_id INTEGER NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
+    split TEXT NOT NULL,
+    entry_time TIMESTAMPTZ NOT NULL,
+    exit_time TIMESTAMPTZ NOT NULL,
+    entry_price DOUBLE PRECISION NOT NULL,
+    exit_price DOUBLE PRECISION NOT NULL,
+    exit_reason TEXT NOT NULL,
+    r_multiple DOUBLE PRECISION NOT NULL,
+    bars_held INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_experiment_trades_experiment_id ON experiment_trades(experiment_id);
+"""
+
+
+def get_connection():
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL is not set in .env")
+    return psycopg2.connect(DATABASE_URL)
+
+
+def init_schema() -> None:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(SCHEMA)
+        conn.commit()
+
+
+def _clauses_to_json(clauses) -> str:
+    return json.dumps([dataclasses.asdict(c) for c in clauses])
+
+
+def save_experiment(
+    symbol: str,
+    interval: str,
+    start_date: str,
+    end_date: str,
+    rule: str,
+    clauses,
+    discovery_stats: dict,
+    validation_stats: dict | None = None,
+    test_stats: dict | None = None,
+    walk_forward: pd.DataFrame | None = None,
+    monte_carlo: dict | None = None,
+) -> int:
+    wf_json = json.loads(walk_forward.to_json(orient="records", date_format="iso")) if walk_forward is not None and len(walk_forward) else None
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO experiments
+                    (symbol, interval, start_date, end_date, rule, clauses,
+                     discovery_stats, validation_stats, test_stats, walk_forward, monte_carlo)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    symbol, interval, start_date, end_date, rule,
+                    _clauses_to_json(clauses),
+                    json.dumps(discovery_stats),
+                    json.dumps(validation_stats) if validation_stats else None,
+                    json.dumps(test_stats) if test_stats else None,
+                    json.dumps(wf_json) if wf_json else None,
+                    json.dumps(monte_carlo) if monte_carlo else None,
+                ),
+            )
+            experiment_id = cur.fetchone()[0]
+        conn.commit()
+    return experiment_id
+
+
+def save_trades(experiment_id: int, trades: pd.DataFrame, split: str) -> None:
+    if trades.empty:
+        return
+    rows = [
+        (
+            experiment_id, split,
+            row.entry_time.to_pydatetime(), row.exit_time.to_pydatetime(),
+            float(row.entry_price), float(row.exit_price),
+            row.exit_reason, float(row.r_multiple), int(row.bars_held),
+        )
+        for row in trades.itertuples()
+    ]
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur,
+                """
+                INSERT INTO experiment_trades
+                    (experiment_id, split, entry_time, exit_time, entry_price, exit_price, exit_reason, r_multiple, bars_held)
+                VALUES %s
+                """,
+                rows,
+            )
+        conn.commit()
+
+
+def list_experiments(limit: int = 20) -> pd.DataFrame:
+    with get_connection() as conn:
+        return pd.read_sql(
+            "SELECT id, created_at, symbol, interval, rule, discovery_stats, validation_stats, test_stats "
+            "FROM experiments ORDER BY created_at DESC LIMIT %(limit)s",
+            conn, params={"limit": limit},
+        )
