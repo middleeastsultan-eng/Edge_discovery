@@ -20,11 +20,14 @@ CREATE TABLE IF NOT EXISTS research_runs (
     source TEXT NOT NULL,
     seed INTEGER NOT NULL,
     hypotheses_tested INTEGER NOT NULL,
+    level1_survivors INTEGER NOT NULL DEFAULT 0,
     discovery_survivors INTEGER NOT NULL,
     funnel_top_k INTEGER NOT NULL,
     validation_survivors INTEGER NOT NULL,
     finalists_count INTEGER NOT NULL
 );
+
+ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS level1_survivors INTEGER NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS experiments (
     id SERIAL PRIMARY KEY,
@@ -99,6 +102,7 @@ def save_research_run(
     source: str,
     seed: int,
     hypotheses_tested: int,
+    level1_survivors: int,
     discovery_survivors: int,
     funnel_top_k: int,
     validation_survivors: int,
@@ -112,13 +116,13 @@ def save_research_run(
             cur.execute(
                 """
                 INSERT INTO research_runs
-                    (symbol, interval, source, seed, hypotheses_tested, discovery_survivors,
-                     funnel_top_k, validation_survivors, finalists_count)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (symbol, interval, source, seed, hypotheses_tested, level1_survivors,
+                     discovery_survivors, funnel_top_k, validation_survivors, finalists_count)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
-                (symbol, interval, source, seed, hypotheses_tested, discovery_survivors,
-                 funnel_top_k, validation_survivors, finalists_count),
+                (symbol, interval, source, seed, hypotheses_tested, level1_survivors,
+                 discovery_survivors, funnel_top_k, validation_survivors, finalists_count),
             )
             run_id = cur.fetchone()[0]
         conn.commit()

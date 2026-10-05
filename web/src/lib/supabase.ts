@@ -56,9 +56,14 @@ export type Experiment = {
     n_baseline: number;
     conditional_mean_return: number;
     baseline_mean_return: number;
+    difference: number;
+    conditional_median_return: number;
+    baseline_median_return: number;
     conditional_p_positive: number;
     baseline_p_positive: number;
+    effect_size: number;
     p_value: number;
+    q_value: number;
   } | null;
   cost_stress: Array<{
     cost_multiplier: number;
@@ -88,6 +93,21 @@ export type Experiment = {
     };
     red_flags: string[];
   } | null;
+};
+
+export type ResearchRun = {
+  id: number;
+  created_at: string;
+  symbol: string;
+  interval: string;
+  source: string;
+  seed: number;
+  hypotheses_tested: number;
+  level1_survivors: number;
+  discovery_survivors: number;
+  funnel_top_k: number;
+  validation_survivors: number;
+  finalists_count: number;
 };
 
 export type ExperimentTrade = {

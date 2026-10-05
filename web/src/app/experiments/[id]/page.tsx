@@ -104,14 +104,24 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
               tone={exp.information_test.conditional_mean_return > exp.information_test.baseline_mean_return ? "good" : "bad"}
             />
             <StatTile label="Baseline mean return" value={`${(exp.information_test.baseline_mean_return * 100).toFixed(3)}%`} />
+            <StatTile
+              label="Difference"
+              value={`${exp.information_test.difference > 0 ? "+" : ""}${(exp.information_test.difference * 100).toFixed(3)}%`}
+              tone={exp.information_test.difference > 0 ? "good" : "bad"}
+            />
+            <StatTile label="Effect size (rank-biserial)" value={exp.information_test.effect_size.toFixed(3)} />
+            <StatTile label="Conditional median" value={`${(exp.information_test.conditional_median_return * 100).toFixed(3)}%`} />
+            <StatTile label="Baseline median" value={`${(exp.information_test.baseline_median_return * 100).toFixed(3)}%`} />
             <StatTile label="P(positive) | condition" value={formatPct(exp.information_test.conditional_p_positive)} />
             <StatTile label="P(positive) | baseline" value={formatPct(exp.information_test.baseline_p_positive)} />
           </div>
           <p className="text-xs mt-3" style={{ color: TEXT_MUTED }}>
             p = {exp.information_test.p_value < 0.0001 ? exp.information_test.p_value.toExponential(2) : exp.information_test.p_value.toFixed(4)}
-            {" "}(Mann-Whitney U, Benjamini-Hochberg FDR-corrected across the batch tested that run) · n={exp.information_test.n_condition} condition / {exp.information_test.n_baseline} baseline.
-            This asks whether the condition carries real information about future returns, before any stop-loss,
-            take-profit, or fees are applied — a different question from whether it&apos;s profitable as a strategy.
+            {" "}· q = {exp.information_test.q_value < 0.0001 ? exp.information_test.q_value.toExponential(2) : exp.information_test.q_value.toFixed(4)}
+            {" "}(FDR-adjusted) · n={exp.information_test.n_condition} condition / {exp.information_test.n_baseline} baseline.
+            Significance alone isn&apos;t the whole story — with enough observations a tiny, economically meaningless
+            difference can produce a tiny p-value, which is why effect size and the raw difference are shown
+            alongside it, not instead of it.
           </p>
         </section>
       )}

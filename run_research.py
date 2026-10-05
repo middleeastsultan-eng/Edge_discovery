@@ -96,9 +96,10 @@ def main():
         source=args.source,
     )
 
-    print(f"\n{args.n_candidates} hypotheses tested -> {summary['discovery_survivors']} met discovery trade minimum "
-          f"-> top {summary['funnel_top_k']} entered the funnel -> {summary['validation_survivors']} survived "
-          f"validation -> {len(summary['finalists'])} finalist(s) reached the final test.")
+    print(f"\n{args.n_candidates} hypotheses tested -> {summary['level1_survivors']} passed the Level-1 information "
+          f"filter -> {summary['discovery_survivors']} met discovery trade minimum -> top {summary['funnel_top_k']} "
+          f"entered the funnel -> {summary['validation_survivors']} survived validation -> "
+          f"{len(summary['finalists'])} finalist(s) reached the final test.")
 
     if not summary["finalists"]:
         print("\nNo finalist made it through the whole pipeline this run. That's the normal/expected outcome")

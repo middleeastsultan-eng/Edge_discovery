@@ -88,7 +88,7 @@ def search(
     seed: int = 42,
     information_horizon: int = 10,
     information_fdr: float = 0.10,
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, int]:
     """Randomly generate n_candidates hypotheses on df (the discovery set only).
 
     Two gates, in order:
@@ -99,8 +99,12 @@ def search(
       2. Backtest gate -- for candidates that pass, run the actual strategy
          (entry/stop/target/fees) and keep those with at least min_trades trades.
 
-    Returns a DataFrame of results sorted by score, one row per candidate that
-    cleared both gates. Each row's "information" column carries the Level-1 stats.
+    Returns (results, level1_survivor_count). results is a DataFrame sorted by
+    score, one row per candidate that cleared both gates, each with an
+    "information" column carrying the Level-1 stats including the FDR-adjusted
+    q-value. level1_survivor_count is how many cleared gate 1 alone, regardless
+    of whether they went on to clear the backtest gate too -- these are tracked
+    separately so the funnel's stages don't get conflated into one number.
     """
     rng = np.random.default_rng(seed)
     candidates = []
@@ -122,9 +126,12 @@ def search(
         info_results.append(info)
 
     if not candidates:
-        return pd.DataFrame()
+        return pd.DataFrame(), 0
 
-    survives = benjamini_hochberg([r["p_value"] for r in info_results], fdr=information_fdr)
+    survives, q_values = benjamini_hochberg([r["p_value"] for r in info_results], fdr=information_fdr)
+    for info, q in zip(info_results, q_values):
+        info["q_value"] = q
+    level1_survivor_count = sum(survives)
 
     results = []
     for candidate, signal, info, keep in zip(candidates, signals, info_results, survives):
@@ -147,10 +154,10 @@ def search(
         })
 
     if not results:
-        return pd.DataFrame()
+        return pd.DataFrame(), level1_survivor_count
 
     out = pd.DataFrame(results).sort_values("score", ascending=False).reset_index(drop=True)
-    return out
+    return out, level1_survivor_count
 
 
 def similar_to_reference(
