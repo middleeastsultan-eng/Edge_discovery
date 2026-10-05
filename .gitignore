@@ -5,3 +5,4 @@ __pycache__/
 venv/
 trading_lab/data_cache/
 .history/
+.lh/

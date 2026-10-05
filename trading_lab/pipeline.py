@@ -162,6 +162,7 @@ def run_experiment(
                 robustness_score=score,
                 research_run_id=research_run_id,
                 information_test=row.get("information"),
+                source=source,
             )
             db.save_trades(experiment_id, val_trades, "validation")
             db.save_trades(experiment_id, test_trades, "test")

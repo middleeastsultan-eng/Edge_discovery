@@ -69,6 +69,18 @@ ALTER TABLE experiments ADD COLUMN IF NOT EXISTS robustness_score JSONB;
 ALTER TABLE experiments ADD COLUMN IF NOT EXISTS research_run_id INTEGER REFERENCES research_runs(id) ON DELETE SET NULL;
 ALTER TABLE experiments ADD COLUMN IF NOT EXISTS information_test JSONB;
 
+-- Needed so the live-signal checker knows which data source (Binance vs Alpaca) to
+-- query for a given experiment without a join -- research_runs.source existed, but was
+-- never threaded onto the experiment row itself. Backfill from the linked run once.
+ALTER TABLE experiments ADD COLUMN IF NOT EXISTS source TEXT;
+UPDATE experiments e SET source = rr.source
+    FROM research_runs rr WHERE e.research_run_id = rr.id AND e.source IS NULL;
+-- A handful of the earliest rows predate research_run_id entirely (no run to join to).
+-- Their symbol is unambiguous in this codebase (BTCUSDT/ETHUSDT are only ever fetched
+-- from Binance, SPY/QQQ only ever from Alpaca), so infer source directly as a fallback.
+UPDATE experiments SET source = 'crypto' WHERE source IS NULL AND symbol IN ('BTCUSDT', 'ETHUSDT');
+UPDATE experiments SET source = 'stocks' WHERE source IS NULL AND symbol IN ('SPY', 'QQQ');
+
 CREATE TABLE IF NOT EXISTS experiment_trades (
     id SERIAL PRIMARY KEY,
     experiment_id INTEGER NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
@@ -84,6 +96,27 @@ CREATE TABLE IF NOT EXISTS experiment_trades (
 
 CREATE INDEX IF NOT EXISTS idx_experiment_trades_experiment_id ON experiment_trades(experiment_id);
 
+-- Continuous forward/paper-trading verdict for a proven (robustness_score=100) pattern.
+-- Recomputed on every live check, not a one-way gate -- a promoted pattern whose live
+-- performance degrades later gets demoted back to "tracking" automatically.
+CREATE TABLE IF NOT EXISTS forward_validation (
+    experiment_id INTEGER PRIMARY KEY REFERENCES experiments(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'tracking',
+    forward_stats JSONB,
+    promoted_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- One row per entry signal we've already alerted on, so a pending signal that keeps
+-- showing up in consecutive live checks (before the next bar closes) never double-fires.
+CREATE TABLE IF NOT EXISTS forward_signal_alerts (
+    id SERIAL PRIMARY KEY,
+    experiment_id INTEGER NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
+    bar_time TIMESTAMPTZ NOT NULL,
+    sent_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (experiment_id, bar_time)
+);
+
 -- Single-row remote control for the local multiprocessing research loop (run_overnight.py).
 -- The dashboard writes here; the local script polls it once per round to decide how many
 -- worker processes to run and whether to pause. id is always 1 -- not a history, a live knob.
@@ -95,6 +128,19 @@ CREATE TABLE IF NOT EXISTS local_agent_settings (
     CONSTRAINT local_agent_settings_single_row CHECK (id = 1)
 );
 INSERT INTO local_agent_settings (id, max_workers, paused) VALUES (1, 3, false) ON CONFLICT (id) DO NOTHING;
+
+-- Supabase exposes every public-schema table over PostgREST; with RLS disabled, anyone
+-- holding the project's anon/public API key can read or write these tables directly over
+-- HTTP, bypassing this app entirely. Enabling RLS with zero policies locks out that
+-- anon/public surface (default-deny) without affecting either real access path: this
+-- app's psycopg2 connections use the table owner (bypasses RLS by default), and the web
+-- dashboard's Supabase client uses the service_role key (always bypasses RLS).
+ALTER TABLE research_runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE experiments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE experiment_trades ENABLE ROW LEVEL SECURITY;
+ALTER TABLE local_agent_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE forward_validation ENABLE ROW LEVEL SECURITY;
+ALTER TABLE forward_signal_alerts ENABLE ROW LEVEL SECURITY;
 """
 
 
@@ -109,6 +155,21 @@ def init_schema() -> None:
         with conn.cursor() as cur:
             cur.execute(SCHEMA)
         conn.commit()
+
+
+def _json_safe(obj):
+    """Postgres's jsonb parser only accepts strict JSON, but Python's json.dumps emits
+    the non-standard literal `Infinity` for an infinite float (e.g. TradeStats.profit_factor
+    when there are zero losing trades) -- that insert fails with InvalidTextRepresentation.
+    Recursively swap inf/-inf/nan for None (-> JSON null) before dumping.
+    """
+    if isinstance(obj, float):
+        return None if (obj != obj or obj in (float("inf"), float("-inf"))) else obj
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_json_safe(v) for v in obj]
+    return obj
 
 
 def _clauses_to_json(clauses) -> str:
@@ -176,6 +237,7 @@ def save_experiment(
     robustness_score: dict | None = None,
     research_run_id: int | None = None,
     information_test: dict | None = None,
+    source: str | None = None,
 ) -> int:
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -184,23 +246,24 @@ def save_experiment(
                 INSERT INTO experiments
                     (symbol, interval, start_date, end_date, rule, clauses,
                      discovery_stats, validation_stats, test_stats, walk_forward, monte_carlo,
-                     cost_stress, parameter_stability, robustness_score, research_run_id, information_test)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     cost_stress, parameter_stability, robustness_score, research_run_id, information_test, source)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
                     symbol, interval, start_date, end_date, rule,
                     _clauses_to_json(clauses),
-                    json.dumps(discovery_stats),
-                    json.dumps(validation_stats) if validation_stats else None,
-                    json.dumps(test_stats) if test_stats else None,
+                    json.dumps(_json_safe(discovery_stats)),
+                    json.dumps(_json_safe(validation_stats)) if validation_stats else None,
+                    json.dumps(_json_safe(test_stats)) if test_stats else None,
                     _df_to_json(walk_forward),
-                    json.dumps(monte_carlo) if monte_carlo else None,
+                    json.dumps(_json_safe(monte_carlo)) if monte_carlo else None,
                     _df_to_json(cost_stress),
-                    json.dumps(parameter_stability) if parameter_stability else None,
-                    json.dumps(robustness_score) if robustness_score else None,
+                    json.dumps(_json_safe(parameter_stability)) if parameter_stability else None,
+                    json.dumps(_json_safe(robustness_score)) if robustness_score else None,
                     research_run_id,
                     json.dumps(information_test) if information_test else None,
+                    source,
                 ),
             )
             experiment_id = cur.fetchone()[0]
@@ -273,3 +336,90 @@ def list_experiments(limit: int = 20) -> pd.DataFrame:
             "FROM experiments ORDER BY created_at DESC LIMIT %(limit)s",
             conn, params={"limit": limit},
         )
+
+
+def get_proven_experiments(min_score: float = 100.0, symbol: str | None = None,
+                            interval: str | None = None, source: str | None = None) -> pd.DataFrame:
+    """Experiments whose robustness_score.total clears min_score -- the backward-looking
+    gate. Optionally narrowed to one symbol/interval/source combo (the live checker runs
+    once per combo, mirroring run_scheduled.py).
+    """
+    query = (
+        "SELECT id, symbol, interval, source, rule, clauses, test_stats, robustness_score "
+        "FROM experiments WHERE (robustness_score->>'total')::float >= %(min_score)s"
+    )
+    params: dict = {"min_score": min_score}
+    if symbol is not None:
+        query += " AND symbol = %(symbol)s"
+        params["symbol"] = symbol
+    if interval is not None:
+        query += " AND interval = %(interval)s"
+        params["interval"] = interval
+    if source is not None:
+        query += " AND source = %(source)s"
+        params["source"] = source
+    with get_connection() as conn:
+        return pd.read_sql(query, conn, params=params)
+
+
+def get_trades(experiment_id: int, split: str) -> pd.DataFrame:
+    with get_connection() as conn:
+        return pd.read_sql(
+            "SELECT entry_time, exit_time, entry_price, exit_price, exit_reason, r_multiple, bars_held "
+            "FROM experiment_trades WHERE experiment_id = %(experiment_id)s AND split = %(split)s "
+            "ORDER BY entry_time",
+            conn, params={"experiment_id": experiment_id, "split": split},
+        )
+
+
+def get_forward_validation(experiment_id: int) -> dict | None:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT status, forward_stats, promoted_at FROM forward_validation WHERE experiment_id = %s",
+                (experiment_id,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            return {"status": row[0], "forward_stats": row[1], "promoted_at": row[2]}
+
+
+def upsert_forward_validation(experiment_id: int, status: str, forward_stats: dict,
+                               promoted_at=None) -> None:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO forward_validation (experiment_id, status, forward_stats, promoted_at, updated_at)
+                VALUES (%s, %s, %s, %s, now())
+                ON CONFLICT (experiment_id) DO UPDATE SET
+                    status = EXCLUDED.status,
+                    forward_stats = EXCLUDED.forward_stats,
+                    promoted_at = COALESCE(forward_validation.promoted_at, EXCLUDED.promoted_at),
+                    updated_at = now()
+                """,
+                (experiment_id, status, json.dumps(_json_safe(forward_stats)), promoted_at),
+            )
+        conn.commit()
+
+
+def record_alert_if_new(experiment_id: int, bar_time) -> bool:
+    """Returns True (and logs it) only the first time this exact signal bar is seen --
+    the UNIQUE constraint on (experiment_id, bar_time) is what makes this safe to call
+    on every live check without ever double-alerting the same pending entry.
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO forward_signal_alerts (experiment_id, bar_time)
+                VALUES (%s, %s)
+                ON CONFLICT (experiment_id, bar_time) DO NOTHING
+                RETURNING id
+                """,
+                (experiment_id, bar_time),
+            )
+            is_new = cur.fetchone() is not None
+        conn.commit()
+    return is_new
