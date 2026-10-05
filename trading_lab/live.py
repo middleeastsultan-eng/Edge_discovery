@@ -165,6 +165,23 @@ def check_pattern(experiment_row: dict, feats: pd.DataFrame, config: BacktestCon
     return CheckResult(experiment_id, pending, bar_time, forward_stats, status, len(new_trades))
 
 
+def build_promotion_message(experiment_row: dict, forward_stats: TradeStats) -> str:
+    """Sent once, the moment a pattern's status first flips to 'promoted' -- the
+    middle of the three things worth a Telegram ping: not just 'found a candidate'
+    (that's the discovery-time message) and not yet 'trade this now' (that's
+    build_alert_message), but 'this one just proved itself against real data.'
+    """
+    link = f"{DASHBOARD_URL}/experiments/{experiment_row['id']}" if DASHBOARD_URL else ""
+    return (
+        f"Pattern proved itself in live trading ({experiment_row['symbol']} {experiment_row['interval']})\n\n"
+        f"Rule: {experiment_row['rule']}\n"
+        f"Forward track record: {forward_stats.n_trades} trades, "
+        f"{forward_stats.win_rate:.0%} win rate, {forward_stats.expectancy_r:.3f}R expectancy\n\n"
+        f"Now eligible for trade alerts."
+        + (f"\n\n{link}" if link else "")
+    )
+
+
 def build_alert_message(experiment_row: dict, feats: pd.DataFrame, forward_stats: TradeStats,
                          config: BacktestConfig = BacktestConfig()) -> str:
     last = feats.iloc[-1]

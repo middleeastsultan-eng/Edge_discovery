@@ -32,6 +32,7 @@ from .data import get_candles
 from .data_stocks import get_stock_candles
 from .discovery import Candidate, search
 from .features import build_features
+from .live import TRACKING_MIN_SCORE
 from .metrics import TradeStats
 from .validate import (
     chronological_split,
@@ -191,7 +192,23 @@ def run_experiment(
 
 def is_pass(finalist: dict) -> bool:
     """A finalist already satisfies the trade-count/sign bar by construction
-    (that's what the funnel selects for) -- "pass" here means the robustness
-    score backs it up too.
+    (that's what the funnel selects for) -- "pass" here means the robustness score
+    clears the same bar that admits a pattern into forward tracking
+    (trading_lab.live.TRACKING_MIN_SCORE). One threshold for both "worth tracking
+    live" and "worth telling the user about."
     """
-    return finalist["robustness_score"]["total"] >= 55.0
+    return finalist["robustness_score"]["total"] >= TRACKING_MIN_SCORE
+
+
+def is_novel_pass(finalist: dict, symbol: str, interval: str, source: str) -> bool:
+    """is_pass(), plus: skip if an earlier experiment already found this exact rule
+    and already cleared the bar. The random search frequently rediscovers
+    near-identical rules across passes -- without this, each rediscovery would ping
+    Telegram again for what's effectively the same pattern, exactly the kind of
+    repetitive noise worth cutting.
+    """
+    if not is_pass(finalist):
+        return False
+    return not db.rule_already_cleared_bar(
+        symbol, interval, source, finalist["rule"], TRACKING_MIN_SCORE, finalist["experiment_id"],
+    )

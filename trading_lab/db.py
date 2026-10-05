@@ -518,6 +518,27 @@ def list_paper_trades() -> pd.DataFrame:
         )
 
 
+def rule_already_cleared_bar(symbol: str, interval: str, source: str, rule: str,
+                              min_score: float, before_id: int) -> bool:
+    """True if an EARLIER experiment (lower id -- the random search often rediscovers
+    near-identical rules across passes) with this exact symbol/interval/source/rule
+    already cleared min_score. Used to avoid re-notifying for what's effectively the
+    same pattern showing up again, not just a literal duplicate.
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT 1 FROM experiments
+                WHERE symbol = %s AND interval = %s AND source = %s AND rule = %s
+                  AND id < %s AND (robustness_score->>'total')::float >= %s
+                LIMIT 1
+                """,
+                (symbol, interval, source, rule, before_id, min_score),
+            )
+            return cur.fetchone() is not None
+
+
 def get_promoted_patterns_with_promotion_time() -> pd.DataFrame:
     """Every pattern currently promoted, with the timestamp it earned that status --
     trades that closed before promoted_at don't count (that would be hindsight bias:

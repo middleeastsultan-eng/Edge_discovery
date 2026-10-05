@@ -1,13 +1,14 @@
 """One symbol/interval/source combo, one live-signal check. Mirrors run_scheduled.py's
 shape (meant to be invoked by a GitHub Actions matrix, independent and stateless) but
 runs much more often -- it doesn't search for new patterns, it only re-checks patterns
-already scored well by the research pipeline (robustness_score.total >= TRACKING_MIN_SCORE) against fresh
-market data.
+already scored well by the research pipeline (robustness_score.total >= TRACKING_MIN_SCORE)
+against fresh market data.
 
-Sends Telegram ONLY when a pattern that has ALSO proven itself in forward/paper trading
-(not just backtest) has a trade signal pending right now. This is a different, more
-urgent message than run_scheduled.py's "candidate survived validation" notification --
-that one says "worth a look," this one says "trade this."
+Sends Telegram for two of the three things worth a ping: once, the moment a pattern's
+status first flips to "promoted" (it just proved itself against real data), and every
+time a promoted pattern has a new trade signal pending right now. Both are different
+from run_scheduled.py's "new pattern found" message -- that one says "worth tracking,"
+these say "this one's proven" and "trade this," respectively.
 
 Usage:
     python run_live_check.py --source crypto --symbol BTCUSDT --interval 15m
@@ -50,9 +51,13 @@ def main():
         return
 
     alerts_sent = 0
+    promotions_sent = 0
     for _, row in tracked.iterrows():
         experiment_row = row.to_dict()
         experiment_id = int(experiment_row["id"])
+
+        prior = db.get_forward_validation(experiment_id)
+        prior_status = prior["status"] if prior else "tracking"
 
         try:
             result = live.check_pattern(experiment_row, feats)
@@ -72,6 +77,11 @@ def main():
             f"new_trades={result.new_trade_count} pending={result.pending}"
         )
 
+        if result.status == "promoted" and prior_status != "promoted":
+            send_message(live.build_promotion_message(experiment_row, result.forward_stats))
+            promotions_sent += 1
+            print("    -> Telegram promotion notice sent (pattern just proved itself live)")
+
         if result.status == "promoted" and result.pending:
             is_new = db.record_alert_if_new(experiment_id, result.bar_time)
             if is_new:
@@ -81,7 +91,7 @@ def main():
             else:
                 print(f"    -> already alerted for signal bar {result.bar_time}, skipping")
 
-    print(f"\nDone. {len(tracked)} tracked pattern(s) checked, {alerts_sent} alert(s) sent.")
+    print(f"\nDone. {len(tracked)} tracked pattern(s) checked, {promotions_sent} promotion(s), {alerts_sent} trade alert(s) sent.")
 
 
 if __name__ == "__main__":

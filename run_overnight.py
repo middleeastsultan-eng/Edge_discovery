@@ -30,7 +30,7 @@ from datetime import datetime, timedelta
 
 from trading_lab import db
 from trading_lab.config import DASHBOARD_URL
-from trading_lab.pipeline import is_pass, run_experiment
+from trading_lab.pipeline import is_novel_pass, run_experiment
 from trading_lab.telegram import send_message
 
 # (source, symbol, interval, start, end) -- each source has its own valid date range:
@@ -95,18 +95,18 @@ def _run_one_combo(task: tuple) -> dict:
     for f in summary["finalists"]:
         score = f["robustness_score"]["total"]
         label = f["robustness_score"]["label"]
-        ok = is_pass(f)
-        print(f"    {tag} {f['rule']}  robustness={score} ({label})  pass={ok}", flush=True)
+        ok = is_novel_pass(f, symbol, interval, source)
+        print(f"    {tag} {f['rule']}  robustness={score} ({label})  notify={ok}", flush=True)
 
         if ok:
             passed += 1
             link = f"{DASHBOARD_URL}/experiments/{f['experiment_id']}" if DASHBOARD_URL else ""
             send_message(
-                f"Candidate survived validation ({symbol} {interval})\n\n"
+                f"New pattern found ({symbol} {interval})\n\n"
                 f"Rule: {f['rule']}\n"
                 f"Robustness: {score}/100 ({label})\n"
-                f"Validation expectancy: {f['validation_stats'].expectancy_r:.3f}R ({f['validation_stats'].n_trades} trades)\n"
-                f"Test expectancy: {f['test_stats'].expectancy_r:.3f}R ({f['test_stats'].n_trades} trades)\n"
+                f"Entering forward tracking against live data -- will only alert again "
+                f"if it proves itself in real trading, not just backtest.\n"
                 + (f"\n{link}" if link else "")
             )
 
@@ -139,15 +139,15 @@ def main():
     deadline = datetime.now() + timedelta(hours=args.hours) if args.hours else None
     deadline_str = deadline.strftime("%Y-%m-%d %H:%M") if deadline else "until stopped (Ctrl+C)"
 
-    send_message(
-        f"Local cluster research started.\n"
-        f"{os.cpu_count()} CPU cores detected -- worker count and pause/resume are now controlled "
-        f"from the dashboard's Compute Control panel.\n"
-        f"Running {deadline_str}.\n"
-        f"{args.n_candidates} candidates per combo per pass, {len(DEFAULT_COMBOS)} combos per round.\n"
-        f"Will notify only on finalists whose robustness score clears the bar."
+    # Console/log only -- Telegram is reserved for new patterns, live-proven patterns,
+    # and trade signals. Routine start/stop status isn't one of those.
+    print(
+        f"Local cluster research started. {os.cpu_count()} CPU cores detected -- worker count "
+        f"and pause/resume are controlled from the dashboard's Compute Control panel. "
+        f"Running {deadline_str}. {args.n_candidates} candidates per combo per pass, "
+        f"{len(DEFAULT_COMBOS)} combos per round.",
+        flush=True,
     )
-    print(f"{os.cpu_count()} CPU cores detected. Worker count/pause controlled from the dashboard each round.", flush=True)
     print("This complements the GitHub Actions schedule -- that keeps running independently while your PC is off.\n", flush=True)
 
     rounds = 0
@@ -181,7 +181,6 @@ def main():
     except KeyboardInterrupt:
         print("\nStopped by user.", flush=True)
 
-    send_message(f"Local cluster research finished.\n{rounds} round(s), {tried} combo-passes, {total_finalists} finalist(s), {total_passed} passed.")
     print(f"\nDone. {rounds} round(s), {tried} combo-passes, {total_finalists} finalists, {total_passed} passed.", flush=True)
 
 

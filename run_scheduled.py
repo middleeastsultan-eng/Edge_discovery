@@ -19,7 +19,7 @@ import traceback
 from datetime import datetime, timezone
 
 from trading_lab.config import DASHBOARD_URL
-from trading_lab.pipeline import is_pass, run_experiment
+from trading_lab.pipeline import is_novel_pass, run_experiment
 from trading_lab.telegram import send_message
 
 
@@ -52,18 +52,18 @@ def main():
     for f in summary["finalists"]:
         score = f["robustness_score"]["total"]
         label = f["robustness_score"]["label"]
-        is_ok = is_pass(f)
-        print(f"  {f['rule']}  robustness={score} ({label})  pass={is_ok}")
+        is_ok = is_novel_pass(f, args.symbol, args.interval, args.source)
+        print(f"  {f['rule']}  robustness={score} ({label})  notify={is_ok}")
 
         if is_ok:
             passed += 1
             link = f"{DASHBOARD_URL}/experiments/{f['experiment_id']}" if DASHBOARD_URL else ""
             send_message(
-                f"Candidate survived validation ({args.symbol} {args.interval})\n\n"
+                f"New pattern found ({args.symbol} {args.interval})\n\n"
                 f"Rule: {f['rule']}\n"
                 f"Robustness: {score}/100 ({label})\n"
-                f"Validation expectancy: {f['validation_stats'].expectancy_r:.3f}R ({f['validation_stats'].n_trades} trades)\n"
-                f"Test expectancy: {f['test_stats'].expectancy_r:.3f}R ({f['test_stats'].n_trades} trades)\n"
+                f"Entering forward tracking against live data -- will only alert again "
+                f"if it proves itself in real trading, not just backtest.\n"
                 + (f"\n{link}" if link else "")
             )
 
