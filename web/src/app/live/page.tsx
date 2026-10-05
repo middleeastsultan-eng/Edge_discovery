@@ -44,7 +44,7 @@ export default async function LivePage() {
   const [{ data: expData, error: expError }, { data: fvData }, { data: alertData }, { data: paperAccountData }, { data: paperTradeData }] = await Promise.all([
     supabase
       .from("experiments")
-      .select("id, created_at, symbol, interval, rule, robustness_score")
+      .select("id, created_at, symbol, interval, rule, plain_english, robustness_score")
       .order("id", { ascending: false }),
     supabase.from("forward_validation").select("*"),
     supabase.from("forward_signal_alerts").select("*").order("sent_at", { ascending: false }).limit(20),
@@ -60,7 +60,7 @@ export default async function LivePage() {
     );
   }
 
-  const experiments = (expData ?? []) as Pick<Experiment, "id" | "created_at" | "symbol" | "interval" | "rule" | "robustness_score">[];
+  const experiments = (expData ?? []) as Pick<Experiment, "id" | "created_at" | "symbol" | "interval" | "rule" | "plain_english" | "robustness_score">[];
   const experimentById = new Map(experiments.map((e) => [e.id, e]));
 
   const forwardByExperiment = new Map((fvData ?? []).map((fv) => [fv.experiment_id, fv as ForwardValidation]));
@@ -150,14 +150,20 @@ export default async function LivePage() {
                       <span className="font-medium" style={{ color: TEXT_PRIMARY }}>{exp.symbol}</span>{" "}
                       <span style={{ color: TEXT_MUTED }}>{exp.interval}</span>
                     </td>
-                    <td className="px-4 py-3 max-w-md truncate" style={{ color: TEXT_SECONDARY }} title={exp.rule}>
+                    <td className="px-4 py-3 max-w-md" style={{ color: TEXT_SECONDARY }}>
                       <Link
                         href={`/experiments/${exp.id}`}
-                        className="transition-colors hover:text-[var(--tl-accent)]"
+                        className="block truncate transition-colors hover:text-[var(--tl-accent)]"
                         style={{ fontFamily: "var(--font-geist-mono)" }}
+                        title={exp.rule}
                       >
                         {exp.rule}
                       </Link>
+                      {exp.plain_english && (
+                        <div className="truncate text-xs mt-0.5" style={{ color: TEXT_MUTED }} title={exp.plain_english}>
+                          {exp.plain_english}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>
                       {stats ? stats.n_trades : "—"}

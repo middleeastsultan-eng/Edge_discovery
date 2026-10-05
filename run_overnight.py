@@ -30,7 +30,8 @@ from datetime import datetime, timedelta
 
 from trading_lab import db
 from trading_lab.config import DASHBOARD_URL
-from trading_lab.pipeline import is_novel_pass, run_experiment
+from trading_lab.explain import describe_rule
+from trading_lab.pipeline import is_novel_pass, is_pass, run_experiment
 from trading_lab.telegram import send_message
 
 # (source, symbol, interval, start, end) -- each source has its own valid date range:
@@ -95,8 +96,19 @@ def _run_one_combo(task: tuple) -> dict:
     for f in summary["finalists"]:
         score = f["robustness_score"]["total"]
         label = f["robustness_score"]["label"]
-        ok = is_novel_pass(f, symbol, interval, source)
+        passes = is_pass(f)
+        ok = is_novel_pass(f, symbol, interval, source) if passes else False
         print(f"    {tag} {f['rule']}  robustness={score} ({label})  notify={ok}", flush=True)
+
+        if not passes:
+            continue
+
+        description = (
+            describe_rule(f["rule"], symbol, interval) if ok
+            else db.get_plain_english_for_rule(symbol, interval, source, f["rule"])
+        )
+        if description:
+            db.set_plain_english(f["experiment_id"], description)
 
         if ok:
             passed += 1
@@ -104,7 +116,8 @@ def _run_one_combo(task: tuple) -> dict:
             send_message(
                 f"New pattern found ({symbol} {interval})\n\n"
                 f"Rule: {f['rule']}\n"
-                f"Robustness: {score}/100 ({label})\n"
+                + (f"In plain English: {description}\n" if description else "")
+                + f"Robustness: {score}/100 ({label})\n"
                 f"Entering forward tracking against live data -- will only alert again "
                 f"if it proves itself in real trading, not just backtest.\n"
                 + (f"\n{link}" if link else "")

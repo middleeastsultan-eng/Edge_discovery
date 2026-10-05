@@ -128,14 +128,20 @@ export default async function Home() {
                       </span>{" "}
                       <span style={{ color: TEXT_MUTED }}>{exp.interval}</span>
                     </td>
-                    <td className="px-4 py-3 max-w-md truncate" style={{ color: TEXT_SECONDARY }} title={exp.rule}>
+                    <td className="px-4 py-3 max-w-md" style={{ color: TEXT_SECONDARY }}>
                       <Link
                         href={`/experiments/${exp.id}`}
-                        className="transition-colors hover:text-[var(--tl-accent)]"
+                        className="block truncate transition-colors hover:text-[var(--tl-accent)]"
                         style={{ fontFamily: "var(--font-geist-mono)" }}
+                        title={exp.rule}
                       >
                         {exp.rule}
                       </Link>
+                      {exp.plain_english && (
+                        <div className="truncate text-xs mt-0.5" style={{ color: TEXT_MUTED }} title={exp.plain_english}>
+                          {exp.plain_english}
+                        </div>
+                      )}
                     </td>
                     <td
                       className="px-4 py-3 text-right tabular-nums"

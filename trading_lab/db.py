@@ -81,6 +81,12 @@ UPDATE experiments e SET source = rr.source
 UPDATE experiments SET source = 'crypto' WHERE source IS NULL AND symbol IN ('BTCUSDT', 'ETHUSDT');
 UPDATE experiments SET source = 'stocks' WHERE source IS NULL AND symbol IN ('SPY', 'QQQ');
 
+-- Plain-English translation of `rule`, for dashboard/Telegram readability -- pure
+-- translation layer (see trading_lab/explain.py), never used in any scoring, filtering,
+-- or pattern-selection logic. NULL for the vast majority of experiments (only the ones
+-- that actually surface to a human get one) -- not every candidate deserves an API call.
+ALTER TABLE experiments ADD COLUMN IF NOT EXISTS plain_english TEXT;
+
 CREATE TABLE IF NOT EXISTS experiment_trades (
     id SERIAL PRIMARY KEY,
     experiment_id INTEGER NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
@@ -379,7 +385,7 @@ def get_proven_experiments(min_score: float = 100.0, symbol: str | None = None,
     once per combo, mirroring run_scheduled.py).
     """
     query = (
-        "SELECT id, symbol, interval, source, rule, clauses, test_stats, robustness_score "
+        "SELECT id, symbol, interval, source, rule, clauses, test_stats, robustness_score, plain_english "
         "FROM experiments WHERE (robustness_score->>'total')::float >= %(min_score)s"
     )
     params: dict = {"min_score": min_score}
@@ -394,6 +400,33 @@ def get_proven_experiments(min_score: float = 100.0, symbol: str | None = None,
         params["source"] = source
     with get_connection() as conn:
         return pd.read_sql(query, conn, params=params)
+
+
+def set_plain_english(experiment_id: int, text: str) -> None:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE experiments SET plain_english = %s WHERE id = %s", (text, experiment_id))
+        conn.commit()
+
+
+def get_plain_english_for_rule(symbol: str, interval: str, source: str, rule: str) -> str | None:
+    """Reuses an existing translation for the identical rule/symbol/interval/source
+    combo if one exists, so the random search rediscovering the same pattern (see
+    rule_already_cleared_bar) doesn't also mean paying for a redundant API call.
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT plain_english FROM experiments
+                WHERE symbol = %s AND interval = %s AND source = %s AND rule = %s
+                  AND plain_english IS NOT NULL
+                LIMIT 1
+                """,
+                (symbol, interval, source, rule),
+            )
+            row = cur.fetchone()
+            return row[0] if row else None
 
 
 def get_trades(experiment_id: int, split: str) -> pd.DataFrame:

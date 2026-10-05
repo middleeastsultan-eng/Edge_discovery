@@ -172,10 +172,12 @@ def build_promotion_message(experiment_row: dict, forward_stats: TradeStats) -> 
     build_alert_message), but 'this one just proved itself against real data.'
     """
     link = f"{DASHBOARD_URL}/experiments/{experiment_row['id']}" if DASHBOARD_URL else ""
+    description = experiment_row.get("plain_english")
     return (
         f"Pattern proved itself in live trading ({experiment_row['symbol']} {experiment_row['interval']})\n\n"
         f"Rule: {experiment_row['rule']}\n"
-        f"Forward track record: {forward_stats.n_trades} trades, "
+        + (f"In plain English: {description}\n" if description else "")
+        + f"Forward track record: {forward_stats.n_trades} trades, "
         f"{forward_stats.win_rate:.0%} win rate, {forward_stats.expectancy_r:.3f}R expectancy\n\n"
         f"Now eligible for trade alerts."
         + (f"\n\n{link}" if link else "")
@@ -192,11 +194,13 @@ def build_alert_message(experiment_row: dict, feats: pd.DataFrame, forward_stats
     expected_move_pct = (target_price - entry_ref) / entry_ref
 
     link = f"{DASHBOARD_URL}/experiments/{experiment_row['id']}" if DASHBOARD_URL else ""
+    description = experiment_row.get("plain_english")
 
     return (
         f"Trade signal -- {experiment_row['symbol']} {experiment_row['interval']}\n\n"
         f"Pattern: {experiment_row['rule']}\n"
-        f"Forward track record: {forward_stats.n_trades} trades, "
+        + (f"In plain English: {description}\n" if description else "")
+        + f"Forward track record: {forward_stats.n_trades} trades, "
         f"{forward_stats.win_rate:.0%} win rate, {forward_stats.expectancy_r:.3f}R expectancy\n\n"
         f"Entry: next bar open (~{entry_ref:.4g})\n"
         f"Stop: {stop_price:.4g}   Target: {target_price:.4g}\n"

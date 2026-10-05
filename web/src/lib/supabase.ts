@@ -34,6 +34,7 @@ export type Experiment = {
   start_date: string;
   end_date: string;
   rule: string;
+  plain_english: string | null;
   clauses: unknown;
   discovery_stats: TradeStats & { score?: number; rule?: string };
   validation_stats: TradeStats | null;

@@ -18,8 +18,10 @@ import time
 import traceback
 from datetime import datetime, timezone
 
+from trading_lab import db
 from trading_lab.config import DASHBOARD_URL
-from trading_lab.pipeline import is_novel_pass, run_experiment
+from trading_lab.explain import describe_rule
+from trading_lab.pipeline import is_novel_pass, is_pass, run_experiment
 from trading_lab.telegram import send_message
 
 
@@ -52,8 +54,22 @@ def main():
     for f in summary["finalists"]:
         score = f["robustness_score"]["total"]
         label = f["robustness_score"]["label"]
-        is_ok = is_novel_pass(f, args.symbol, args.interval, args.source)
+        passes = is_pass(f)
+        is_ok = is_novel_pass(f, args.symbol, args.interval, args.source) if passes else False
         print(f"  {f['rule']}  robustness={score} ({label})  notify={is_ok}")
+
+        if not passes:
+            continue
+
+        # Generate a plain-English translation only for genuinely new rules -- a
+        # rediscovered duplicate reuses the earlier one instead of paying for another
+        # API call (same rule, same description, every time).
+        description = (
+            describe_rule(f["rule"], args.symbol, args.interval) if is_ok
+            else db.get_plain_english_for_rule(args.symbol, args.interval, args.source, f["rule"])
+        )
+        if description:
+            db.set_plain_english(f["experiment_id"], description)
 
         if is_ok:
             passed += 1
@@ -61,7 +77,8 @@ def main():
             send_message(
                 f"New pattern found ({args.symbol} {args.interval})\n\n"
                 f"Rule: {f['rule']}\n"
-                f"Robustness: {score}/100 ({label})\n"
+                + (f"In plain English: {description}\n" if description else "")
+                + f"Robustness: {score}/100 ({label})\n"
                 f"Entering forward tracking against live data -- will only alert again "
                 f"if it proves itself in real trading, not just backtest.\n"
                 + (f"\n{link}" if link else "")
