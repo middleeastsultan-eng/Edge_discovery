@@ -1,17 +1,68 @@
 name: Overnight Research
 
 on:
-  # Schedule paused while the discovery funnel logic is being reworked (single-best-of-800
-  # selection was overfitting-prone -- see commit history). Re-enable the cron line once the
-  # funnel/ledger/threshold rework lands and has been tested with workflow_dispatch.
-  # schedule:
-  #   - cron: "*/20 * * * *"
+  schedule:
+    - cron: "*/30 * * * *"
   workflow_dispatch: {}
 
 jobs:
   research:
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 15-minute timeframes have far more historical bars -> slower backtests,
+          # so they get fewer discovery candidates to stay inside the time budget.
+          - source: crypto
+            symbol: BTCUSDT
+            interval: 15m
+            start: "2019-01-01"
+            end: "2026-01-01"
+            n_candidates: 400
+          - source: crypto
+            symbol: BTCUSDT
+            interval: 1h
+            start: "2019-01-01"
+            end: "2026-01-01"
+            n_candidates: 800
+          - source: crypto
+            symbol: ETHUSDT
+            interval: 15m
+            start: "2019-01-01"
+            end: "2026-01-01"
+            n_candidates: 400
+          - source: crypto
+            symbol: ETHUSDT
+            interval: 1h
+            start: "2019-01-01"
+            end: "2026-01-01"
+            n_candidates: 800
+          - source: stocks
+            symbol: SPY
+            interval: 15Min
+            start: "2020-08-01"
+            end: "2026-01-01"
+            n_candidates: 400
+          - source: stocks
+            symbol: SPY
+            interval: 1Hour
+            start: "2020-08-01"
+            end: "2026-01-01"
+            n_candidates: 800
+          - source: stocks
+            symbol: QQQ
+            interval: 15Min
+            start: "2020-08-01"
+            end: "2026-01-01"
+            n_candidates: 400
+          - source: stocks
+            symbol: QQQ
+            interval: 1Hour
+            start: "2020-08-01"
+            end: "2026-01-01"
+            n_candidates: 800
     steps:
       - uses: actions/checkout@v4
 
@@ -21,7 +72,14 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - run: python run_scheduled.py
+      - run: >
+          python run_scheduled.py
+          --source ${{ matrix.source }}
+          --symbol ${{ matrix.symbol }}
+          --interval ${{ matrix.interval }}
+          --start ${{ matrix.start }}
+          --end ${{ matrix.end }}
+          --n-candidates ${{ matrix.n_candidates }}
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
