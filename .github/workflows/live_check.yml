@@ -16,30 +16,85 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Mirrors every symbol/interval combo research.yml can produce patterns for.
+          - source: crypto
+            symbol: BTCUSDT
+            interval: 1m
+          - source: crypto
+            symbol: BTCUSDT
+            interval: 5m
           - source: crypto
             symbol: BTCUSDT
             interval: 15m
           - source: crypto
             symbol: BTCUSDT
+            interval: 30m
+          - source: crypto
+            symbol: BTCUSDT
             interval: 1h
+          - source: crypto
+            symbol: BTCUSDT
+            interval: 4h
+          - source: crypto
+            symbol: BTCUSDT
+            interval: 1d
+          - source: crypto
+            symbol: ETHUSDT
+            interval: 1m
+          - source: crypto
+            symbol: ETHUSDT
+            interval: 5m
           - source: crypto
             symbol: ETHUSDT
             interval: 15m
           - source: crypto
             symbol: ETHUSDT
+            interval: 30m
+          - source: crypto
+            symbol: ETHUSDT
             interval: 1h
+          - source: crypto
+            symbol: ETHUSDT
+            interval: 4h
+          - source: crypto
+            symbol: ETHUSDT
+            interval: 1d
+          - source: stocks
+            symbol: SPY
+            interval: 1Min
+          - source: stocks
+            symbol: SPY
+            interval: 5Min
           - source: stocks
             symbol: SPY
             interval: 15Min
           - source: stocks
             symbol: SPY
+            interval: 30Min
+          - source: stocks
+            symbol: SPY
             interval: 1Hour
+          - source: stocks
+            symbol: SPY
+            interval: 1Day
+          - source: stocks
+            symbol: QQQ
+            interval: 1Min
+          - source: stocks
+            symbol: QQQ
+            interval: 5Min
           - source: stocks
             symbol: QQQ
             interval: 15Min
           - source: stocks
             symbol: QQQ
+            interval: 30Min
+          - source: stocks
+            symbol: QQQ
             interval: 1Hour
+          - source: stocks
+            symbol: QQQ
+            interval: 1Day
     steps:
       - uses: actions/checkout@v4
 

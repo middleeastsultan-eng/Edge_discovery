@@ -63,6 +63,110 @@ jobs:
             start: "2020-08-01"
             end: "2026-01-01"
             n_candidates: 800
+          # 1-minute bars are ~15x denser than 15-minute -- bounded to the last ~2 years
+          # (not the full history) to keep fetch + backtest tractable, with a much
+          # smaller candidate count to stay inside the per-job time budget.
+          - source: crypto
+            symbol: BTCUSDT
+            interval: 1m
+            start: "2024-01-01"
+            end: "2026-01-01"
+            n_candidates: 100
+          - source: crypto
+            symbol: ETHUSDT
+            interval: 1m
+            start: "2024-01-01"
+            end: "2026-01-01"
+            n_candidates: 100
+          - source: stocks
+            symbol: SPY
+            interval: 1Min
+            start: "2024-01-01"
+            end: "2026-01-01"
+            n_candidates: 100
+          - source: stocks
+            symbol: QQQ
+            interval: 1Min
+            start: "2024-01-01"
+            end: "2026-01-01"
+            n_candidates: 100
+          # 5-minute: denser than 15-minute, so fewer candidates than the 15m combos above.
+          - source: crypto
+            symbol: BTCUSDT
+            interval: 5m
+            start: "2019-01-01"
+            end: "2026-01-01"
+            n_candidates: 200
+          - source: crypto
+            symbol: ETHUSDT
+            interval: 5m
+            start: "2019-01-01"
+            end: "2026-01-01"
+            n_candidates: 200
+          - source: stocks
+            symbol: SPY
+            interval: 5Min
+            start: "2020-08-01"
+            end: "2026-01-01"
+            n_candidates: 200
+          - source: stocks
+            symbol: QQQ
+            interval: 5Min
+            start: "2020-08-01"
+            end: "2026-01-01"
+            n_candidates: 200
+          # 30-minute: between 15m and 1h in density.
+          - source: crypto
+            symbol: BTCUSDT
+            interval: 30m
+            start: "2019-01-01"
+            end: "2026-01-01"
+            n_candidates: 500
+          - source: crypto
+            symbol: ETHUSDT
+            interval: 30m
+            start: "2019-01-01"
+            end: "2026-01-01"
+            n_candidates: 500
+          - source: stocks
+            symbol: SPY
+            interval: 30Min
+            start: "2020-08-01"
+            end: "2026-01-01"
+            n_candidates: 500
+          - source: stocks
+            symbol: QQQ
+            interval: 30Min
+            start: "2020-08-01"
+            end: "2026-01-01"
+            n_candidates: 500
+          # Daily: far fewer bars than any intraday interval, so it can afford many more
+          # candidates per pass -- but note validate.py's sample-size scoring wants 100+
+          # combined validation+test trades, which a daily rule may rarely reach.
+          - source: crypto
+            symbol: BTCUSDT
+            interval: 1d
+            start: "2019-01-01"
+            end: "2026-01-01"
+            n_candidates: 2000
+          - source: crypto
+            symbol: ETHUSDT
+            interval: 1d
+            start: "2019-01-01"
+            end: "2026-01-01"
+            n_candidates: 2000
+          - source: stocks
+            symbol: SPY
+            interval: 1Day
+            start: "2020-08-01"
+            end: "2026-01-01"
+            n_candidates: 1500
+          - source: stocks
+            symbol: QQQ
+            interval: 1Day
+            start: "2020-08-01"
+            end: "2026-01-01"
+            n_candidates: 1500
     steps:
       - uses: actions/checkout@v4
 
