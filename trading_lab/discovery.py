@@ -27,6 +27,7 @@ FEATURES = [
     "volume_ratio_20",
     "return_5",
     "return_20",
+    "hour",
 ]
 
 

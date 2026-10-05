@@ -53,7 +53,10 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     out["return_5"] = out["close"].pct_change(5)
     out["return_20"] = out["close"].pct_change(20)
 
-    out["hour"] = out.index.hour
-    out["dow"] = out.index.dayofweek
+    # NY local time, not raw UTC -- otherwise "hour" silently shifts by 1 across DST
+    # transitions and session-time patterns (e.g. NY open/close) become unreliable.
+    ny_index = out.index.tz_convert("America/New_York")
+    out["hour"] = ny_index.hour
+    out["dow"] = ny_index.dayofweek
 
     return out.dropna()

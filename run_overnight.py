@@ -18,21 +18,25 @@ from trading_lab.config import DASHBOARD_URL
 from trading_lab.pipeline import is_pass, run_experiment
 from trading_lab.telegram import send_message
 
+# (source, symbol, interval, start, end) -- each source has its own valid date range:
+# Binance has full crypto history; Alpaca's free IEX feed only goes back to ~2020-08.
 DEFAULT_COMBOS = [
-    ("BTCUSDT", "15m"),
-    ("BTCUSDT", "1h"),
-    ("BTCUSDT", "4h"),
-    ("ETHUSDT", "15m"),
-    ("ETHUSDT", "1h"),
-    ("ETHUSDT", "4h"),
+    ("crypto", "BTCUSDT", "15m", "2019-01-01", "2026-01-01"),
+    ("crypto", "BTCUSDT", "1h", "2019-01-01", "2026-01-01"),
+    ("crypto", "BTCUSDT", "4h", "2019-01-01", "2026-01-01"),
+    ("crypto", "ETHUSDT", "15m", "2019-01-01", "2026-01-01"),
+    ("crypto", "ETHUSDT", "1h", "2019-01-01", "2026-01-01"),
+    ("crypto", "ETHUSDT", "4h", "2019-01-01", "2026-01-01"),
+    ("stocks", "SPY", "15Min", "2020-08-01", "2026-01-01"),
+    ("stocks", "SPY", "1Hour", "2020-08-01", "2026-01-01"),
+    ("stocks", "QQQ", "15Min", "2020-08-01", "2026-01-01"),
+    ("stocks", "QQQ", "1Hour", "2020-08-01", "2026-01-01"),
 ]
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--hours", type=float, default=8.0, help="how long to keep searching")
-    parser.add_argument("--start", default="2019-01-01")
-    parser.add_argument("--end", default="2026-01-01")
     parser.add_argument("--n-candidates", type=int, default=2000, help="random hypotheses searched per run")
     parser.add_argument("--min-trades", type=int, default=30)
     parser.add_argument("--min-robustness", type=float, default=55.0, help="minimum score to notify about")
@@ -42,6 +46,7 @@ def main():
     send_message(
         f"Overnight research started.\n"
         f"Running until {deadline.strftime('%Y-%m-%d %H:%M')} ({args.hours}h).\n"
+        f"Assets: BTC, ETH, SPY, QQQ across multiple timeframes.\n"
         f"Will notify only if something survives validation (robustness >= {args.min_robustness})."
     )
 
@@ -51,23 +56,24 @@ def main():
 
     try:
         while datetime.now() < deadline:
-            for symbol, interval in DEFAULT_COMBOS:
+            for source, symbol, interval, start, end in DEFAULT_COMBOS:
                 if datetime.now() >= deadline:
                     break
 
                 tried += 1
                 seed += 1
-                print(f"\n[{datetime.now().strftime('%H:%M:%S')}] #{tried} Searching {symbol} {interval} (seed {seed}) ...")
+                print(f"\n[{datetime.now().strftime('%H:%M:%S')}] #{tried} Searching [{source}] {symbol} {interval} (seed {seed}) ...")
 
                 try:
                     result = run_experiment(
                         symbol,
                         interval,
-                        args.start,
-                        args.end,
+                        start,
+                        end,
                         n_candidates=args.n_candidates,
                         min_trades=args.min_trades,
                         seed=seed,
+                        source=source,
                     )
                 except Exception:
                     print(f"  error, skipping: {traceback.format_exc()}")

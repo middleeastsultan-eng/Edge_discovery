@@ -9,6 +9,7 @@ from __future__ import annotations
 from . import db
 from .backtest import BacktestConfig
 from .data import get_candles
+from .data_stocks import get_stock_candles
 from .discovery import Candidate, search
 from .features import build_features
 from .metrics import TradeStats
@@ -33,11 +34,18 @@ def run_experiment(
     min_trades: int = 30,
     seed: int = 42,
     save: bool = True,
+    source: str = "crypto",
 ) -> dict | None:
     """Run one full discovery + validation cycle. Returns None if no candidate
     produced enough trades, otherwise a dict with every stage's results.
+
+    source: "crypto" (Binance, interval like "1h") or "stocks" (Alpaca SPY/QQQ,
+    interval like "15Min" -- Alpaca's own timeframe format).
     """
-    raw = get_candles(symbol, interval, start, end)
+    if source == "stocks":
+        raw = get_stock_candles(symbol, interval, start, end)
+    else:
+        raw = get_candles(symbol, interval, start, end)
     feats = build_features(raw)
     discovery_df, val_df, test_df = chronological_split(feats)
     config = BacktestConfig()

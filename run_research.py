@@ -2,6 +2,7 @@
 
 Usage:
     python run_research.py --symbol BTCUSDT --interval 1h --start 2019-01-01 --end 2026-01-01
+    python run_research.py --source stocks --symbol SPY --interval 15Min --start 2020-08-01 --end 2026-01-01
 
 For unattended overnight searching across multiple assets with Telegram
 notifications, use run_overnight.py instead.
@@ -16,9 +17,10 @@ from trading_lab.pipeline import run_experiment
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--symbol", default="BTCUSDT")
-    parser.add_argument("--interval", default="1h")
-    parser.add_argument("--start", default="2019-01-01")
+    parser.add_argument("--source", choices=["crypto", "stocks"], default="crypto")
+    parser.add_argument("--symbol", default="BTCUSDT", help="e.g. BTCUSDT (crypto) or SPY/QQQ (stocks)")
+    parser.add_argument("--interval", default="1h", help="crypto: 15m/1h/4h/1d -- stocks: 15Min/1Hour/1Day (Alpaca format)")
+    parser.add_argument("--start", default="2019-01-01", help="stocks: free Alpaca data starts ~2020-08")
     parser.add_argument("--end", default="2026-01-01")
     parser.add_argument("--n-candidates", type=int, default=3000)
     parser.add_argument("--min-trades", type=int, default=30)
@@ -27,7 +29,7 @@ def main():
     parser.add_argument("--no-save", action="store_true", help="skip writing results to the database")
     args = parser.parse_args()
 
-    print(f"Running {args.symbol} {args.interval} {args.start} -> {args.end}, {args.n_candidates} candidates ...")
+    print(f"Running [{args.source}] {args.symbol} {args.interval} {args.start} -> {args.end}, {args.n_candidates} candidates ...")
 
     result = run_experiment(
         symbol=args.symbol,
@@ -38,6 +40,7 @@ def main():
         min_trades=args.min_trades,
         seed=args.seed,
         save=not args.no_save,
+        source=args.source,
     )
 
     if result is None:
