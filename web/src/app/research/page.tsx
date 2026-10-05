@@ -11,6 +11,7 @@ import { CumulativeTrends } from "@/components/CumulativeTrends";
 import { ComputeControl } from "@/components/ComputeControl";
 import { FunnelChart } from "@/components/FunnelChart";
 import { SurvivalTrend } from "@/components/SurvivalTrend";
+import { PageGlow } from "@/components/PageGlow";
 import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, BORDER_SOFT, STATUS_GOOD, STATUS_CRITICAL, TABLE_HEADER_BG, CHART_BLUE, CHART_TEAL, tint } from "@/lib/theme";
 
 export const dynamic = "force-dynamic";
@@ -46,7 +47,8 @@ export default async function ResearchHealth() {
 
   return (
     <div className="space-y-10">
-      <div>
+      <div className="relative">
+        <PageGlow />
         <h1 className="text-2xl font-semibold mb-1.5" style={{ color: TEXT_PRIMARY }}>
           Research Health
         </h1>
@@ -60,7 +62,7 @@ export default async function ResearchHealth() {
       <ComputeControl settings={agentSettings} />
 
       {/* 1. Funnel totals */}
-      <section className="rounded-xl p-4 shadow-sm" style={cardStyle}>
+      <section className="rounded-2xl p-4 shadow-sm" style={cardStyle}>
         <h2 className="text-sm font-medium mb-3" style={{ color: TEXT_SECONDARY }}>
           Funnel totals
         </h2>
@@ -82,7 +84,7 @@ export default async function ResearchHealth() {
       </section>
 
       {/* 3. Survival rates over time */}
-      <section className="rounded-xl p-4 shadow-sm" style={cardStyle}>
+      <section className="rounded-2xl p-4 shadow-sm" style={cardStyle}>
         <h2 className="text-sm font-medium mb-3" style={{ color: TEXT_SECONDARY }}>
           Survival rates by week
         </h2>
@@ -94,7 +96,7 @@ export default async function ResearchHealth() {
       </section>
 
       {/* 5. Per-asset/timeframe matrix */}
-      <section className="rounded-xl p-4 shadow-sm" style={cardStyle}>
+      <section className="rounded-2xl p-4 shadow-sm" style={cardStyle}>
         <h2 className="text-sm font-medium mb-3" style={{ color: TEXT_SECONDARY }}>
           Research streams by market
         </h2>
@@ -155,7 +157,7 @@ export default async function ResearchHealth() {
       </section>
 
       {/* 6. Research integrity panel */}
-      <section className="rounded-xl p-4 shadow-sm" style={cardStyle}>
+      <section className="rounded-2xl p-4 shadow-sm" style={cardStyle}>
         <h2 className="text-sm font-medium mb-3" style={{ color: TEXT_SECONDARY }}>
           Research integrity
         </h2>

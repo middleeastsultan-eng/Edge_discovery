@@ -2,7 +2,7 @@
 
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, LabelList } from "recharts";
 import type { FunnelStage } from "@/lib/researchHealth";
-import { CHART_BLUE, TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY, SURFACE, BORDER, GRIDLINE } from "@/lib/theme";
+import { ACCENT, TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY, SURFACE, BORDER, GRIDLINE } from "@/lib/theme";
 
 function formatPct(x: number): string {
   return `${(x * 100).toFixed(1)}%`;
@@ -29,7 +29,7 @@ export function FunnelChart({ stages }: { stages: FunnelStage[] }) {
   return (
     <ResponsiveContainer width="100%" height={stages.length * 44}>
       <BarChart data={rows} layout="vertical" margin={{ top: 4, right: 56, left: 0, bottom: 4 }} barCategoryGap={10}>
-        <XAxis type="number" hide domain={[0, "dataMax"]} />
+        <XAxis type="number" dataKey="count" hide domain={[0, "dataMax"]} />
         <YAxis
           type="category"
           dataKey="label"
@@ -41,7 +41,7 @@ export function FunnelChart({ stages }: { stages: FunnelStage[] }) {
         <Tooltip content={<TooltipContent />} cursor={{ fill: GRIDLINE, opacity: 0.4 }} />
         <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={22}>
           {rows.map((s) => (
-            <Cell key={s.label} fill={CHART_BLUE} />
+            <Cell key={s.label} fill={ACCENT} />
           ))}
           <LabelList
             dataKey="count"

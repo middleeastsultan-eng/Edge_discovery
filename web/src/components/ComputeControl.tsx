@@ -2,11 +2,11 @@
 
 import { updateComputeSettings } from "@/app/research/actions";
 import type { AgentSettings } from "@/lib/supabase";
-import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, STATUS_GOOD, STATUS_CRITICAL, CHART_BLUE, tint } from "@/lib/theme";
+import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, STATUS_GOOD, STATUS_CRITICAL, ACCENT, ACCENT_FOREGROUND, tint } from "@/lib/theme";
 
 export function ComputeControl({ settings }: { settings: AgentSettings }) {
   return (
-    <div className="rounded-xl p-4 shadow-sm" style={{ backgroundColor: SURFACE, border: `1px solid ${BORDER}` }}>
+    <div className="rounded-2xl p-4 shadow-sm" style={{ backgroundColor: SURFACE, border: `1px solid ${BORDER}` }}>
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-sm font-medium" style={{ color: TEXT_SECONDARY }}>
           Compute control
@@ -45,8 +45,8 @@ export function ComputeControl({ settings }: { settings: AgentSettings }) {
           type="submit"
           name="paused"
           value="false"
-          className="rounded-md px-3 py-1.5 text-xs font-medium text-white"
-          style={{ backgroundColor: CHART_BLUE }}
+          className="rounded-md px-3 py-1.5 text-xs font-semibold"
+          style={{ backgroundColor: ACCENT, color: ACCENT_FOREGROUND }}
         >
           Save &amp; resume
         </button>

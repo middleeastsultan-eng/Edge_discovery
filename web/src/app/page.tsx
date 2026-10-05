@@ -5,6 +5,7 @@ import { verdict } from "@/lib/evaluate";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StatTile } from "@/components/StatTile";
 import { StackedBar } from "@/components/StackedBar";
+import { PageGlow } from "@/components/PageGlow";
 import { formatDate, formatNum, formatPct, formatR } from "@/lib/format";
 import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, BORDER_SOFT, STATUS_GOOD, STATUS_CRITICAL, TABLE_HEADER_BG, tint } from "@/lib/theme";
 
@@ -35,7 +36,8 @@ export default async function Home() {
 
   return (
     <div className="space-y-8">
-      <div>
+      <div className="relative">
+        <PageGlow />
         <h1 className="text-2xl font-semibold mb-1.5" style={{ color: TEXT_PRIMARY }}>
           Experiments
         </h1>
@@ -67,7 +69,7 @@ export default async function Home() {
       </div>
 
       {experiments.length > 0 && (
-        <div className="rounded-xl p-4 shadow-sm" style={{ backgroundColor: SURFACE, border: `1px solid ${BORDER}` }}>
+        <div className="rounded-2xl p-4 shadow-sm" style={{ backgroundColor: SURFACE, border: `1px solid ${BORDER}` }}>
           <h2 className="text-xs mb-3" style={{ color: TEXT_MUTED }}>
             Verdict distribution
           </h2>
@@ -83,14 +85,14 @@ export default async function Home() {
 
       {experiments.length === 0 ? (
         <div
-          className="rounded-xl px-4 py-10 text-center text-sm"
+          className="rounded-2xl px-4 py-10 text-center text-sm"
           style={{ border: `1px solid ${BORDER}`, backgroundColor: SURFACE, color: TEXT_MUTED }}
         >
           No experiments saved yet. Run{" "}
           <code style={{ color: TEXT_SECONDARY }}>python run_research.py</code> to generate the first one.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl shadow-sm" style={{ border: `1px solid ${BORDER}` }}>
+        <div className="overflow-x-auto rounded-2xl shadow-sm" style={{ border: `1px solid ${BORDER}` }}>
           <table className="w-full text-sm">
             <thead>
               <tr
@@ -129,7 +131,7 @@ export default async function Home() {
                     <td className="px-4 py-3 max-w-md truncate" style={{ color: TEXT_SECONDARY }} title={exp.rule}>
                       <Link
                         href={`/experiments/${exp.id}`}
-                        className="transition-colors hover:text-[var(--tl-chart-blue)]"
+                        className="transition-colors hover:text-[var(--tl-accent)]"
                         style={{ fontFamily: "var(--font-geist-mono)" }}
                       >
                         {exp.rule}

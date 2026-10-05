@@ -10,7 +10,7 @@ import { StatsGrid } from "@/components/StatsGrid";
 import { EquityCurve } from "@/components/EquityCurve";
 import { RobustnessScore } from "@/components/RobustnessScore";
 import { formatDateTime, formatNum, formatPct, formatR } from "@/lib/format";
-import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, BORDER_SOFT, STATUS_GOOD, STATUS_CRITICAL, CHART_BLUE, TABLE_HEADER_BG, tint } from "@/lib/theme";
+import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, BORDER_SOFT, STATUS_GOOD, STATUS_CRITICAL, ACCENT, TABLE_HEADER_BG, tint } from "@/lib/theme";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +19,7 @@ const cardStyle = { backgroundColor: SURFACE, border: `1px solid ${BORDER}` };
 function SectionHeading({ icon: Icon, children }: { icon: ElementType; children: ReactNode }) {
   return (
     <h2 className="flex items-center gap-2 text-sm font-medium mb-3" style={{ color: TEXT_SECONDARY }}>
-      <Icon size={15} style={{ color: CHART_BLUE }} />
+      <Icon size={15} style={{ color: ACCENT }} />
       {children}
     </h2>
   );
@@ -66,7 +66,7 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
         </Link>
       </div>
 
-      <section className="rounded-xl p-5 shadow-sm space-y-5" style={cardStyle}>
+      <section className="rounded-2xl p-5 shadow-sm space-y-5" style={cardStyle}>
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1
@@ -93,7 +93,7 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
       </section>
 
       {exp.information_test && (
-        <section className="rounded-xl p-4 shadow-sm" style={cardStyle}>
+        <section className="rounded-2xl p-4 shadow-sm" style={cardStyle}>
           <SectionHeading icon={Microscope}>
             Level-1 information test
             <span className="font-normal normal-case" style={{ color: TEXT_MUTED, opacity: 0.8 }}>
@@ -157,7 +157,7 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
         </section>
       )}
 
-      <section className="rounded-xl p-4 shadow-sm" style={cardStyle}>
+      <section className="rounded-2xl p-4 shadow-sm" style={cardStyle}>
         <SectionHeading icon={Dices}>
           Discovery set
           <span className="font-normal normal-case" style={{ color: TEXT_MUTED, opacity: 0.8 }}>
@@ -167,23 +167,23 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
         <StatsGrid stats={exp.discovery_stats} />
       </section>
 
-      <section className="rounded-xl p-4 shadow-sm" style={cardStyle}>
+      <section className="rounded-2xl p-4 shadow-sm" style={cardStyle}>
         <SectionHeading icon={FlaskConical}>Validation set</SectionHeading>
         <StatsGrid stats={exp.validation_stats} />
       </section>
 
-      <section className="rounded-xl p-4 shadow-sm" style={cardStyle}>
+      <section className="rounded-2xl p-4 shadow-sm" style={cardStyle}>
         <SectionHeading icon={ShieldCheck}>Final out-of-sample test set</SectionHeading>
         <StatsGrid stats={exp.test_stats} />
       </section>
 
-      <section className="rounded-xl p-4 shadow-sm" style={cardStyle}>
+      <section className="rounded-2xl p-4 shadow-sm" style={cardStyle}>
         <SectionHeading icon={LineChart}>Equity curve</SectionHeading>
         <EquityCurve trades={(trades ?? []) as ExperimentTrade[]} />
       </section>
 
       {exp.walk_forward && exp.walk_forward.length > 0 && (
-        <section className="rounded-xl p-4 shadow-sm" style={cardStyle}>
+        <section className="rounded-2xl p-4 shadow-sm" style={cardStyle}>
           <SectionHeading icon={History}>Walk-forward consistency</SectionHeading>
           <div className="overflow-x-auto rounded-lg" style={{ border: `1px solid ${BORDER}` }}>
             <table className="w-full text-sm">
@@ -237,7 +237,7 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
       )}
 
       {exp.cost_stress && exp.cost_stress.length > 0 && (
-        <section className="rounded-xl p-4 shadow-sm" style={cardStyle}>
+        <section className="rounded-2xl p-4 shadow-sm" style={cardStyle}>
           <SectionHeading icon={DollarSign}>Cost stress — fees and slippage multiplied up</SectionHeading>
           <div className="grid grid-cols-3 gap-3">
             {exp.cost_stress.map((c) => (
@@ -257,7 +257,7 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
       )}
 
       {exp.parameter_stability && exp.parameter_stability.perturbations.length > 0 && (
-        <section className="rounded-xl p-4 shadow-sm" style={cardStyle}>
+        <section className="rounded-2xl p-4 shadow-sm" style={cardStyle}>
           <SectionHeading icon={SlidersHorizontal}>
             Parameter perturbation
             <span className="font-normal normal-case" style={{ color: TEXT_MUTED, opacity: 0.8 }}>
@@ -314,7 +314,7 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
       )}
 
       {mc && (
-        <section className="rounded-xl p-4 shadow-sm" style={cardStyle}>
+        <section className="rounded-2xl p-4 shadow-sm" style={cardStyle}>
           <SectionHeading icon={Dice5}>Monte Carlo — bootstrap resample of test-set trades</SectionHeading>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <StatTile label="Median outcome" value={formatR(mc.final_r_p50)} />

@@ -29,17 +29,17 @@ DASHBOARD_URL = "https://edgediscovery.vercel.app/research"
 
 # Same dark palette as the web dashboard (web/src/app/globals.css .dark block),
 # so the desktop app and the website read as the same product.
-PAGE = "#171614"
-SURFACE = "#1f1e1b"
-SURFACE_RAISED = "#262520"
-BORDER = "#36342f"
+PAGE = "#0a0a0a"
+SURFACE = "#131311"
+SURFACE_RAISED = "#1c1c19"
+BORDER = "#2a2a26"
 TEXT_PRIMARY = "#f3f2ee"
 TEXT_SECONDARY = "#b8b6af"
 TEXT_MUTED = "#827f78"
 STATUS_GOOD = "#3ecf3e"
 STATUS_CRITICAL = "#f0605f"
-CHART_BLUE = "#5b9ee8"
-CHART_BLUE_HOVER = "#7ab0ed"
+ACCENT = "#3ecf3e"
+ACCENT_HOVER = "#5fe05f"
 
 STATUS_COLOR = {"Idle": TEXT_MUTED, "Running": STATUS_GOOD, "Stopping...": STATUS_CRITICAL}
 
@@ -69,13 +69,13 @@ def _configure_style() -> ttk.Style:
     )
 
     style.configure(
-        "Accent.TButton", background=CHART_BLUE, foreground="#0b0b0b",
-        bordercolor=CHART_BLUE, lightcolor=CHART_BLUE, darkcolor=CHART_BLUE,
-        focuscolor=CHART_BLUE, padding=(14, 6), relief="flat", font=("Segoe UI", 9, "bold"),
+        "Accent.TButton", background=ACCENT, foreground="#0b0b0b",
+        bordercolor=ACCENT, lightcolor=ACCENT, darkcolor=ACCENT,
+        focuscolor=ACCENT, padding=(14, 6), relief="flat", font=("Segoe UI", 9, "bold"),
     )
     style.map(
         "Accent.TButton",
-        background=[("active", CHART_BLUE_HOVER), ("disabled", SURFACE)],
+        background=[("active", ACCENT_HOVER), ("disabled", SURFACE)],
         foreground=[("disabled", TEXT_MUTED)],
     )
 

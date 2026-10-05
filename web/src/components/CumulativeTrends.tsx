@@ -8,7 +8,7 @@ function MiniTrend({ data, dataKey, label, color }: { data: CumulativePoint[]; d
   const latest = data.length ? (data[data.length - 1][dataKey] as number) : 0;
 
   return (
-    <div className="rounded-xl p-4 shadow-sm" style={{ backgroundColor: SURFACE, border: `1px solid ${BORDER}` }}>
+    <div className="rounded-2xl p-4 shadow-sm" style={{ backgroundColor: SURFACE, border: `1px solid ${BORDER}` }}>
       <div className="flex items-center gap-1.5 text-xs mb-1" style={{ color: TEXT_MUTED }}>
         <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
         {label}

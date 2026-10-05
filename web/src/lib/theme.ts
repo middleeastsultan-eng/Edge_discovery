@@ -4,6 +4,7 @@
 // literals across components.
 
 export const SURFACE = "var(--tl-surface)"; // card/chart surface
+export const SURFACE_RAISED = "var(--tl-surface-raised)"; // nested/hover surface
 export const PAGE = "var(--tl-page)"; // page background
 export const BORDER = "var(--tl-border)";
 export const BORDER_SOFT = "var(--tl-border-soft)";
@@ -25,6 +26,20 @@ export const CHART_RED = "var(--tl-chart-red)";
 export const CHART_GREEN = "var(--tl-chart-green)";
 export const CHART_AMBER = "var(--tl-chart-amber)";
 export const CHART_TEAL = "var(--tl-chart-teal)";
+
+// Brand accent -- the same green that means "pass/good" elsewhere, reused as
+// the one interactive color (buttons, active nav, hover/focus), not a second
+// shade. Keep CHART_BLUE for chart series that need to stay visually distinct
+// from that brand chrome.
+export const ACCENT = "var(--tl-accent)";
+export const ACCENT_HOVER = "var(--tl-accent-hover)";
+// Fixed near-black, not theme-dependent -- green is bright enough in both
+// light and dark mode that white text on it reads weakly; dark text doesn't.
+export const ACCENT_FOREGROUND = "#0b0b0b";
+
+// Opacity for the subtle hero glow behind page headings -- ~0 in light mode,
+// ~0.15 in dark, so PageGlow doesn't need separate light/dark branches.
+export const GLOW_OPACITY = "var(--tl-glow-opacity)";
 
 // Shared table chrome -- header row background and hover tint, theme-aware.
 export const TABLE_HEADER_BG = "color-mix(in srgb, var(--tl-text-primary) 3%, transparent)";

@@ -1,8 +1,11 @@
 import type { LucideIcon } from "lucide-react";
-import { STATUS_GOOD, STATUS_CRITICAL, CHART_BLUE, TEXT_PRIMARY, TEXT_MUTED, SURFACE, BORDER, tint } from "@/lib/theme";
+import { STATUS_GOOD, STATUS_CRITICAL, TEXT_PRIMARY, TEXT_MUTED, SURFACE, BORDER, tint } from "@/lib/theme";
 
+// "neutral" stays muted gray, not the brand green -- a plain count (like
+// "Total experiments") isn't a pass/fail signal and shouldn't borrow the
+// color that means "this strategy survived validation."
 const TONE_COLOR: Record<"neutral" | "good" | "bad", string> = {
-  neutral: CHART_BLUE,
+  neutral: TEXT_MUTED,
   good: STATUS_GOOD,
   bad: STATUS_CRITICAL,
 };
@@ -23,7 +26,7 @@ export function StatTile({
 
   return (
     <div
-      className="group rounded-xl px-4 py-3.5 shadow-sm transition-colors"
+      className="group rounded-2xl px-4 py-3.5 shadow-sm transition-colors"
       style={{ backgroundColor: SURFACE, border: `1px solid ${BORDER}` }}
     >
       <div className="flex items-center justify-between mb-2">
@@ -32,8 +35,8 @@ export function StatTile({
         </div>
         {Icon && (
           <div
-            className="flex h-6 w-6 items-center justify-center rounded-md"
-            style={{ backgroundColor: tint(accent, 10), color: accent }}
+            className="flex h-7 w-7 items-center justify-center rounded-full"
+            style={{ backgroundColor: tint(accent, 12), color: accent }}
           >
             <Icon size={14} strokeWidth={2.25} />
           </div>
