@@ -9,6 +9,7 @@ import { StatTile } from "@/components/StatTile";
 import { StatsGrid } from "@/components/StatsGrid";
 import { EquityCurve } from "@/components/EquityCurve";
 import { RobustnessScore } from "@/components/RobustnessScore";
+import { BannerBackground } from "@/components/BannerBackground";
 import { formatDateTime, formatNum, formatPct, formatR } from "@/lib/format";
 import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, BORDER_SOFT, STATUS_GOOD, STATUS_CRITICAL, ACCENT, TABLE_HEADER_BG, tint } from "@/lib/theme";
 
@@ -66,7 +67,8 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
         </Link>
       </div>
 
-      <section className="rounded-2xl p-5 shadow-sm space-y-5" style={cardStyle}>
+      <section className="relative overflow-hidden rounded-2xl p-5 shadow-sm space-y-5 animate-in fade-in duration-700" style={cardStyle}>
+        <BannerBackground query="financial charts analysis abstract" />
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1

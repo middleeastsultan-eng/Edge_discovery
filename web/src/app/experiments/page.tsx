@@ -5,7 +5,7 @@ import { verdict } from "@/lib/evaluate";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StatTile } from "@/components/StatTile";
 import { StackedBar } from "@/components/StackedBar";
-import { PageGlow } from "@/components/PageGlow";
+import { BannerBackground } from "@/components/BannerBackground";
 import { formatDate, formatNum, formatPct, formatR } from "@/lib/format";
 import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, BORDER_SOFT, STATUS_GOOD, STATUS_CRITICAL, TABLE_HEADER_BG, tint } from "@/lib/theme";
 
@@ -36,8 +36,11 @@ export default async function ExperimentsPage() {
 
   return (
     <div className="space-y-8">
-      <div className="relative">
-        <PageGlow />
+      <div
+        className="relative overflow-hidden rounded-2xl px-6 py-10 sm:px-10 sm:py-14 shadow-sm animate-in fade-in duration-700"
+        style={{ border: `1px solid ${BORDER}` }}
+      >
+        <BannerBackground query="candlestick stock chart screen" />
         <h1 className="text-2xl font-semibold mb-1.5" style={{ color: TEXT_PRIMARY }}>
           Experiments
         </h1>

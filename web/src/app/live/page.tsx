@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Radio, ShieldCheck, Activity, Bell, ArrowRight, Wallet, TrendingDown, Percent } from "lucide-react";
 import { supabase, type Experiment, type ForwardValidation, type ForwardSignalAlert, type PaperAccount, type PaperTrade } from "@/lib/supabase";
 import { StatTile } from "@/components/StatTile";
-import { PageGlow } from "@/components/PageGlow";
+import { BannerBackground } from "@/components/BannerBackground";
 import { PaperEquityCurve } from "@/components/PaperEquityCurve";
 import { formatDateTime, formatPct, formatR, formatUSD } from "@/lib/format";
 import {
@@ -92,11 +92,20 @@ export default async function LivePage() {
 
   return (
     <div className="space-y-8">
-      <div className="relative">
-        <PageGlow />
-        <h1 className="text-2xl font-semibold mb-1.5" style={{ color: TEXT_PRIMARY }}>
-          Live Signals
-        </h1>
+      <div
+        className="relative overflow-hidden rounded-2xl px-6 py-10 sm:px-10 sm:py-14 shadow-sm animate-in fade-in duration-700"
+        style={{ border: `1px solid ${BORDER}` }}
+      >
+        <BannerBackground query="trading floor screens live market data" />
+        <div className="flex items-center gap-2.5 mb-1.5">
+          <span className="relative inline-flex h-2 w-2" aria-hidden>
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" style={{ backgroundColor: STATUS_GOOD }} />
+            <span className="relative inline-flex h-2 w-2 rounded-full" style={{ backgroundColor: STATUS_GOOD }} />
+          </span>
+          <h1 className="text-2xl font-semibold" style={{ color: TEXT_PRIMARY }}>
+            Live Signals
+          </h1>
+        </div>
         <p className="text-sm max-w-2xl" style={{ color: TEXT_MUTED }}>
           A backtest score only proves a pattern worked historically. Anything scoring {TRACKING_MIN_SCORE}+
           gets a real-world shot: continuously re-checked against live market data, with trust earned by

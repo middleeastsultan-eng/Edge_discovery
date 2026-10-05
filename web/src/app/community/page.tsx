@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowUpRight, MessageSquare, ExternalLink } from "lucide-react";
 import { supabase, type RedditStrategy, type Experiment } from "@/lib/supabase";
 import { StatTile } from "@/components/StatTile";
-import { getHeroImage } from "@/lib/pexels";
+import { BannerBackground } from "@/components/BannerBackground";
 import { formatDateTime, formatNum } from "@/lib/format";
 import {
   TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, BORDER_SOFT,
@@ -33,8 +33,7 @@ function StatusBadge({ status }: { status: Status }) {
 }
 
 export default async function CommunityPage() {
-  const [headerImage, { data: strategyData, error }, { data: expData }] = await Promise.all([
-    getHeroImage("online community discussion forum"),
+  const [{ data: strategyData, error }, { data: expData }] = await Promise.all([
     supabase.from("reddit_strategies").select("*").order("fetched_at", { ascending: false }).limit(100),
     supabase.from("experiments").select("id, symbol, interval, robustness_score, reddit_strategy_id").eq("origin", "reddit"),
   ]);
@@ -66,16 +65,7 @@ export default async function CommunityPage() {
         className="relative overflow-hidden rounded-2xl px-6 py-10 sm:px-10 sm:py-14 shadow-sm animate-in fade-in duration-700"
         style={{ border: `1px solid ${BORDER}` }}
       >
-        {headerImage && (
-          <>
-            <div
-              aria-hidden
-              className="absolute inset-0 -z-20 animate-ken-burns"
-              style={{ backgroundImage: `url(${headerImage})`, backgroundSize: "cover", backgroundPosition: "center" }}
-            />
-            <div aria-hidden className="absolute inset-0 -z-10" style={{ backgroundColor: "color-mix(in srgb, var(--tl-page) 80%, transparent)" }} />
-          </>
-        )}
+        <BannerBackground query="online community discussion forum" />
         <span
           className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide"
           style={{ backgroundColor: tint(ACCENT, 15), color: ACCENT }}

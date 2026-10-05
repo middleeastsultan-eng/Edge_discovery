@@ -11,7 +11,7 @@ import { CumulativeTrends } from "@/components/CumulativeTrends";
 import { ComputeControl } from "@/components/ComputeControl";
 import { FunnelChart } from "@/components/FunnelChart";
 import { SurvivalTrend } from "@/components/SurvivalTrend";
-import { PageGlow } from "@/components/PageGlow";
+import { BannerBackground } from "@/components/BannerBackground";
 import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, BORDER_SOFT, STATUS_GOOD, STATUS_CRITICAL, TABLE_HEADER_BG, CHART_BLUE, CHART_TEAL, tint } from "@/lib/theme";
 
 export const dynamic = "force-dynamic";
@@ -47,8 +47,11 @@ export default async function ResearchHealth() {
 
   return (
     <div className="space-y-10">
-      <div className="relative">
-        <PageGlow />
+      <div
+        className="relative overflow-hidden rounded-2xl px-6 py-10 sm:px-10 sm:py-14 shadow-sm animate-in fade-in duration-700"
+        style={{ border: `1px solid ${BORDER}` }}
+      >
+        <BannerBackground query="data analytics research lab monitors" />
         <h1 className="text-2xl font-semibold mb-1.5" style={{ color: TEXT_PRIMARY }}>
           Research Health
         </h1>
