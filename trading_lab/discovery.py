@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 
 from .backtest import BacktestConfig, run_backtest
-from .information import benjamini_hochberg, test_information
+from .information import benjamini_hochberg, classify_economic_significance, test_information
 from .metrics import compute_stats
 
 # feature -> (low_quantile, high_quantile) bounds to sample thresholds from,
@@ -88,24 +88,29 @@ def search(
     seed: int = 42,
     information_horizon: int = 10,
     information_fdr: float = 0.10,
-) -> tuple[pd.DataFrame, int]:
+) -> tuple[pd.DataFrame, dict]:
     """Randomly generate n_candidates hypotheses on df (the discovery set only).
 
-    Two gates, in order:
+    Three gates, in order:
       1. Information gate -- does the condition actually shift the forward-return
          distribution versus baseline (Mann-Whitney U), surviving Benjamini-Hochberg
-         FDR correction across the whole batch? This is the "is there a real
-         relationship here" question, independent of whether it's monetizable.
-      2. Backtest gate -- for candidates that pass, run the actual strategy
+         FDR correction across the whole batch? "Is there a real relationship here,"
+         independent of whether it's monetizable.
+      2. Economic gate -- is the gross edge bigger than this config's estimated
+         round-trip trading cost? Statistically real but too small to clear costs
+         is recorded as STATISTICALLY_INTERESTING, not silently discarded, but does
+         NOT proceed to backtesting -- only RESEARCH_WORTHY candidates do.
+      3. Backtest gate -- for RESEARCH_WORTHY candidates, run the actual strategy
          (entry/stop/target/fees) and keep those with at least min_trades trades.
 
-    Returns (results, level1_survivor_count). results is a DataFrame sorted by
-    score, one row per candidate that cleared both gates, each with an
-    "information" column carrying the Level-1 stats including the FDR-adjusted
-    q-value. level1_survivor_count is how many cleared gate 1 alone, regardless
-    of whether they went on to clear the backtest gate too -- these are tracked
-    separately so the funnel's stages don't get conflated into one number.
+    Returns (results, counts). results is a DataFrame sorted by score, one row per
+    candidate that cleared all three gates, each with an "information" column
+    carrying the Level-1 stats (including the FDR-adjusted q-value and the economic
+    classification). counts is {"level1_survivors", "statistically_interesting",
+    "research_worthy"} -- tracked separately so funnel stages never get conflated.
     """
+    cost_estimate = 2 * (backtest_config.fee_bps + backtest_config.slippage_bps) / 10_000
+
     rng = np.random.default_rng(seed)
     candidates = []
     signals = []
@@ -126,16 +131,22 @@ def search(
         info_results.append(info)
 
     if not candidates:
-        return pd.DataFrame(), 0
+        return pd.DataFrame(), {"level1_survivors": 0, "statistically_interesting": 0, "research_worthy": 0}
 
-    survives, q_values = benjamini_hochberg([r["p_value"] for r in info_results], fdr=information_fdr)
+    q_passes, q_values = benjamini_hochberg([r["p_value"] for r in info_results], fdr=information_fdr)
     for info, q in zip(info_results, q_values):
         info["q_value"] = q
-    level1_survivor_count = sum(survives)
+        info.update(classify_economic_significance(info, q, cost_estimate, fdr=information_fdr))
+
+    counts = {
+        "level1_survivors": sum(q_passes),
+        "statistically_interesting": sum(1 for i in info_results if i["label"] == "STATISTICALLY_INTERESTING"),
+        "research_worthy": sum(1 for i in info_results if i["label"] == "RESEARCH_WORTHY"),
+    }
 
     results = []
-    for candidate, signal, info, keep in zip(candidates, signals, info_results, survives):
-        if not keep:
+    for candidate, signal, info in zip(candidates, signals, info_results):
+        if info["label"] != "RESEARCH_WORTHY":
             continue
 
         trades = run_backtest(df, signal, backtest_config)
@@ -154,10 +165,10 @@ def search(
         })
 
     if not results:
-        return pd.DataFrame(), level1_survivor_count
+        return pd.DataFrame(), counts
 
     out = pd.DataFrame(results).sort_values("score", ascending=False).reset_index(drop=True)
-    return out, level1_survivor_count
+    return out, counts
 
 
 def similar_to_reference(

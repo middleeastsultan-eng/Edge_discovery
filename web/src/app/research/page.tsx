@@ -73,7 +73,14 @@ export default async function ResearchHealth() {
             <tbody>
               {stages.map((s) => (
                 <tr key={s.label} className="border-b last:border-0" style={{ borderColor: "rgba(11,11,11,0.06)" }}>
-                  <td className="px-4 py-3" style={{ color: TEXT_SECONDARY }}>{s.label}</td>
+                  <td className="px-4 py-3" style={{ color: TEXT_SECONDARY }}>
+                    {s.label}
+                    {s.note && (
+                      <span className="ml-1.5 text-[11px]" style={{ color: TEXT_MUTED, opacity: 0.8 }}>
+                        ({s.note})
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-right tabular-nums font-medium" style={{ color: TEXT_PRIMARY }}>
                     {s.count.toLocaleString()}
                   </td>
@@ -126,7 +133,7 @@ export default async function ResearchHealth() {
                   <tr key={w.weekStart} className="border-b last:border-0" style={{ borderColor: "rgba(11,11,11,0.06)" }}>
                     <td className="px-4 py-3 whitespace-nowrap" style={{ color: TEXT_SECONDARY }}>{w.weekStart}</td>
                     <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>{w.hypotheses.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>{formatPct(w.level1Pct)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>{w.level1Pct === null ? "—" : formatPct(w.level1Pct)}</td>
                     <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>{formatPct(w.validationPct)}</td>
                     <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>{formatPct(w.robustPct)}</td>
                     <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>{formatPct(w.finalTestPct)}</td>
@@ -169,7 +176,7 @@ export default async function ResearchHealth() {
                     <td className="px-4 py-3 font-medium" style={{ color: TEXT_PRIMARY }}>{a.symbol}</td>
                     <td className="px-4 py-3" style={{ color: TEXT_MUTED }}>{a.interval}</td>
                     <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>{a.hypotheses.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>{a.level1.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>{a.level1 === null ? "—" : a.level1.toLocaleString()}</td>
                     <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>{a.validation.toLocaleString()}</td>
                     <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>{a.robust.toLocaleString()}</td>
                     <td className="px-4 py-3 text-right tabular-nums font-medium" style={{ color: a.finalTest > 0 ? STATUS_GOOD : TEXT_MUTED }}>
@@ -195,11 +202,13 @@ export default async function ResearchHealth() {
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-2.5 gap-x-4 mb-4">
           {[
             "FDR correction (Benjamini-Hochberg)",
+            "Economic-significance gating (cost-aware, not a fixed threshold)",
             "Chronological train/validation/test split",
             "Final test set locked until candidate frozen",
             "No look-ahead in features (NY-time aware)",
             "Profit concentration check",
             "Minimum trade count enforced",
+            "NULL ≠ zero in the ledger (missing metrics never silently become 0)",
           ].map((item) => (
             <div key={item} className="flex items-center gap-1.5 text-xs" style={{ color: TEXT_SECONDARY }}>
               <CheckCircle2 size={13} style={{ color: STATUS_GOOD }} className="shrink-0" />

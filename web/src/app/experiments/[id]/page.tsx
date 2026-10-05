@@ -96,6 +96,14 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
             <span className="font-normal normal-case" style={{ color: TEXT_MUTED, opacity: 0.8 }}>
               (does the condition shift the next-{exp.information_test.horizon}-bar return distribution?)
             </span>
+            {exp.information_test.label && (
+              <span
+                className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                style={{ color: STATUS_GOOD, backgroundColor: `${STATUS_GOOD}1a` }}
+              >
+                {exp.information_test.label.replace(/_/g, " ")}
+              </span>
+            )}
           </SectionHeading>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <StatTile
@@ -104,21 +112,41 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
               tone={exp.information_test.conditional_mean_return > exp.information_test.baseline_mean_return ? "good" : "bad"}
             />
             <StatTile label="Baseline mean return" value={`${(exp.information_test.baseline_mean_return * 100).toFixed(3)}%`} />
-            <StatTile
-              label="Difference"
-              value={`${exp.information_test.difference > 0 ? "+" : ""}${(exp.information_test.difference * 100).toFixed(3)}%`}
-              tone={exp.information_test.difference > 0 ? "good" : "bad"}
-            />
-            <StatTile label="Effect size (rank-biserial)" value={exp.information_test.effect_size.toFixed(3)} />
-            <StatTile label="Conditional median" value={`${(exp.information_test.conditional_median_return * 100).toFixed(3)}%`} />
-            <StatTile label="Baseline median" value={`${(exp.information_test.baseline_median_return * 100).toFixed(3)}%`} />
+            {exp.information_test.gross_edge !== undefined ? (
+              <StatTile
+                label="Gross edge"
+                value={`${exp.information_test.gross_edge > 0 ? "+" : ""}${(exp.information_test.gross_edge * 100).toFixed(3)}%`}
+                tone={exp.information_test.gross_edge > 0 ? "good" : "bad"}
+              />
+            ) : exp.information_test.difference !== undefined ? (
+              <StatTile
+                label="Difference"
+                value={`${exp.information_test.difference > 0 ? "+" : ""}${(exp.information_test.difference * 100).toFixed(3)}%`}
+                tone={exp.information_test.difference > 0 ? "good" : "bad"}
+              />
+            ) : null}
+            {exp.information_test.net_edge !== undefined && (
+              <StatTile
+                label="Net edge (after est. costs)"
+                value={`${exp.information_test.net_edge > 0 ? "+" : ""}${(exp.information_test.net_edge * 100).toFixed(3)}%`}
+                tone={exp.information_test.net_edge > 0 ? "good" : "bad"}
+              />
+            )}
+            {exp.information_test.effect_size !== undefined && (
+              <StatTile label="Effect size (rank-biserial)" value={exp.information_test.effect_size.toFixed(3)} />
+            )}
+            {exp.information_test.cost_estimate !== undefined && (
+              <StatTile label="Est. round-trip cost" value={`${(exp.information_test.cost_estimate * 100).toFixed(3)}%`} />
+            )}
             <StatTile label="P(positive) | condition" value={formatPct(exp.information_test.conditional_p_positive)} />
             <StatTile label="P(positive) | baseline" value={formatPct(exp.information_test.baseline_p_positive)} />
           </div>
           <p className="text-xs mt-3" style={{ color: TEXT_MUTED }}>
             p = {exp.information_test.p_value < 0.0001 ? exp.information_test.p_value.toExponential(2) : exp.information_test.p_value.toFixed(4)}
-            {" "}· q = {exp.information_test.q_value < 0.0001 ? exp.information_test.q_value.toExponential(2) : exp.information_test.q_value.toFixed(4)}
-            {" "}(FDR-adjusted) · n={exp.information_test.n_condition} condition / {exp.information_test.n_baseline} baseline.
+            {exp.information_test.q_value !== undefined && (
+              <> · q = {exp.information_test.q_value < 0.0001 ? exp.information_test.q_value.toExponential(2) : exp.information_test.q_value.toFixed(4)} (FDR-adjusted)</>
+            )}
+            {" "}· n={exp.information_test.n_condition} condition / {exp.information_test.n_baseline} baseline.
             Significance alone isn&apos;t the whole story — with enough observations a tiny, economically meaningless
             difference can produce a tiny p-value, which is why effect size and the raw difference are shown
             alongside it, not instead of it.

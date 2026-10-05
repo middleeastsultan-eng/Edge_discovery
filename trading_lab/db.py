@@ -20,14 +20,27 @@ CREATE TABLE IF NOT EXISTS research_runs (
     source TEXT NOT NULL,
     seed INTEGER NOT NULL,
     hypotheses_tested INTEGER NOT NULL,
-    level1_survivors INTEGER NOT NULL DEFAULT 0,
+    level1_survivors INTEGER,
+    statistically_interesting_count INTEGER,
+    research_worthy_count INTEGER,
     discovery_survivors INTEGER NOT NULL,
     funnel_top_k INTEGER NOT NULL,
     validation_survivors INTEGER NOT NULL,
     finalists_count INTEGER NOT NULL
 );
 
-ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS level1_survivors INTEGER NOT NULL DEFAULT 0;
+-- NULL means "not measured by this run" (predates a metric), distinct from a real zero.
+-- Never backfill a NOT-NULL-DEFAULT-0 column here again -- that's exactly the mistake
+-- being fixed below: it silently turned "unknown" into a false "zero" for old rows.
+ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS level1_survivors INTEGER;
+ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS statistically_interesting_count INTEGER;
+ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS research_worthy_count INTEGER;
+ALTER TABLE research_runs ALTER COLUMN level1_survivors DROP NOT NULL;
+ALTER TABLE research_runs ALTER COLUMN level1_survivors DROP DEFAULT;
+-- level1_survivors must always be >= discovery_survivors (discovery survivors are a
+-- subset that also cleared the backtest gate). Any row violating that is a leftover
+-- false zero from before this metric existed -- restore it to "unknown."
+UPDATE research_runs SET level1_survivors = NULL WHERE level1_survivors < discovery_survivors;
 
 CREATE TABLE IF NOT EXISTS experiments (
     id SERIAL PRIMARY KEY,
@@ -102,7 +115,9 @@ def save_research_run(
     source: str,
     seed: int,
     hypotheses_tested: int,
-    level1_survivors: int,
+    level1_survivors: int | None,
+    statistically_interesting_count: int | None,
+    research_worthy_count: int | None,
     discovery_survivors: int,
     funnel_top_k: int,
     validation_survivors: int,
@@ -110,6 +125,7 @@ def save_research_run(
 ) -> int:
     """Log one discovery pass for the hypothesis ledger -- recorded regardless of
     outcome, so 'how many hypotheses have we tested total' is a real, queryable number.
+    Pass None for a metric a given run doesn't measure -- never a false zero.
     """
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -117,11 +133,13 @@ def save_research_run(
                 """
                 INSERT INTO research_runs
                     (symbol, interval, source, seed, hypotheses_tested, level1_survivors,
+                     statistically_interesting_count, research_worthy_count,
                      discovery_survivors, funnel_top_k, validation_survivors, finalists_count)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (symbol, interval, source, seed, hypotheses_tested, level1_survivors,
+                 statistically_interesting_count, research_worthy_count,
                  discovery_survivors, funnel_top_k, validation_survivors, finalists_count),
             )
             run_id = cur.fetchone()[0]

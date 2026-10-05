@@ -75,14 +75,16 @@ def run_experiment(
     discovery_df, val_df, test_df = chronological_split(feats)
     config = BacktestConfig()
 
-    discovery_results, level1_survivors = search(
+    discovery_results, counts = search(
         discovery_df, n_candidates=n_candidates, min_trades=discovery_min_trades,
         backtest_config=config, seed=seed,
     )
 
     summary = {
         "hypotheses_tested": n_candidates,
-        "level1_survivors": level1_survivors,
+        "level1_survivors": counts["level1_survivors"],
+        "statistically_interesting": counts["statistically_interesting"],
+        "research_worthy": counts["research_worthy"],
         "discovery_survivors": len(discovery_results),
         "funnel_top_k": 0,
         "validation_survivors": 0,
@@ -91,7 +93,11 @@ def run_experiment(
 
     if discovery_results.empty:
         if save:
-            db.save_research_run(symbol, interval, source, seed, n_candidates, level1_survivors, 0, 0, 0, 0)
+            db.save_research_run(
+                symbol, interval, source, seed, n_candidates,
+                counts["level1_survivors"], counts["statistically_interesting"], counts["research_worthy"],
+                0, 0, 0, 0,
+            )
         return summary
 
     top_candidates = discovery_results.head(funnel_top_k)
@@ -115,7 +121,8 @@ def run_experiment(
     research_run_id = None
     if save:
         research_run_id = db.save_research_run(
-            symbol, interval, source, seed, n_candidates, level1_survivors,
+            symbol, interval, source, seed, n_candidates,
+            counts["level1_survivors"], counts["statistically_interesting"], counts["research_worthy"],
             len(discovery_results), len(top_candidates), len(survivors), len(finalist_inputs),
         )
 

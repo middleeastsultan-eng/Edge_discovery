@@ -64,6 +64,10 @@ export type Experiment = {
     effect_size: number;
     p_value: number;
     q_value: number;
+    label: "REJECTED" | "STATISTICALLY_INTERESTING" | "RESEARCH_WORTHY";
+    gross_edge: number;
+    cost_estimate: number;
+    net_edge: number;
   } | null;
   cost_stress: Array<{
     cost_multiplier: number;
@@ -103,7 +107,10 @@ export type ResearchRun = {
   source: string;
   seed: number;
   hypotheses_tested: number;
-  level1_survivors: number;
+  // null = not measured by this run (predates the metric), distinct from a real zero.
+  level1_survivors: number | null;
+  statistically_interesting_count: number | null;
+  research_worthy_count: number | null;
   discovery_survivors: number;
   funnel_top_k: number;
   validation_survivors: number;

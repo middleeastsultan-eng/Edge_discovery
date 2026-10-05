@@ -11,10 +11,11 @@ testing correction, filters out the second case before it ever reaches a backtes
 
 Statistical significance alone isn't the whole story: with enough observations, an
 economically meaningless difference (+0.080% vs +0.084%) can produce a tiny p-value.
-test_information() also reports effect size (rank-biserial correlation) and the raw
-magnitude of the difference, so a tiny-but-"significant" effect is visibly
-distinguishable from a large one -- gating on effect size too is the planned next
-step, not yet enforced here.
+test_information() reports effect size (rank-biserial correlation) and the raw
+magnitude of the difference so that's visible -- and classify_economic_significance()
+turns it into a three-way verdict using an estimated transaction cost rather than one
+universal effect-size cutoff, since what counts as "a big enough move" is specific to
+the asset/timeframe's actual trading costs, not a constant.
 """
 
 from __future__ import annotations
@@ -73,6 +74,42 @@ def test_information(
         "effect_size": float(effect_size),
         "p_value": float(p_value),
     }
+
+
+def classify_economic_significance(
+    info: dict,
+    q_value: float,
+    cost_estimate: float,
+    fdr: float = 0.10,
+) -> dict:
+    """Three-way verdict instead of pass/fail, per candidate:
+
+      REJECTED                 -- no statistically credible relationship (q > fdr)
+      STATISTICALLY_INTERESTING -- real signal, but too small to clear estimated
+                                    round-trip trading costs
+      RESEARCH_WORTHY           -- real signal AND large enough to plausibly survive
+                                    costs -- only this tier proceeds to backtesting
+
+    cost_estimate is a round-trip cost in the same units as `difference` (price-return
+    fraction) -- 2*(fee+slippage) from the backtest config that will actually be used,
+    NOT a fixed number shared across every asset/timeframe. A 0.10% move means something
+    different on BTC 15m than on SPY 1h because the cost to capture it differs.
+
+    The backtester here is long-only, so only a POSITIVE difference (condition predicts
+    upward moves) is currently exploitable -- a strong negative difference is real
+    information but gets held at STATISTICALLY_INTERESTING until short support exists.
+    """
+    gross_edge = info["difference"]
+    net_edge = gross_edge - cost_estimate
+
+    if q_value > fdr:
+        label = "REJECTED"
+    elif net_edge > 0:
+        label = "RESEARCH_WORTHY"
+    else:
+        label = "STATISTICALLY_INTERESTING"
+
+    return {"label": label, "gross_edge": gross_edge, "cost_estimate": cost_estimate, "net_edge": net_edge}
 
 
 def benjamini_hochberg(p_values: list[float], fdr: float = 0.10) -> tuple[list[bool], list[float]]:
