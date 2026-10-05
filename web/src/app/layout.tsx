@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import Image from "next/image";
 import { Geist, Geist_Mono } from "next/font/google";
-import { NavLinks } from "@/components/NavLinks";
-import { ThemeToggle } from "@/components/ThemeToggle";
+import { Sidebar } from "@/components/Sidebar";
+import { MobileNav } from "@/components/MobileNav";
+import { supabase, type AgentSettings } from "@/lib/supabase";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -21,6 +20,8 @@ export const metadata: Metadata = {
   description: "Systematic strategy research: discovery, validation, walk-forward and Monte Carlo results.",
 };
 
+export const dynamic = "force-dynamic";
+
 // Runs before paint so the stored/preferred theme applies with no flash.
 const NO_FLASH_SCRIPT = `
 (function () {
@@ -32,7 +33,14 @@ const NO_FLASH_SCRIPT = `
 })();
 `;
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  const { data: settingsData } = await supabase
+    .from("local_agent_settings")
+    .select("max_workers, paused")
+    .eq("id", 1)
+    .single();
+  const settings = (settingsData ?? null) as AgentSettings | null;
+
   return (
     <html
       lang="en"
@@ -43,35 +51,14 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: NO_FLASH_SCRIPT }} />
       </head>
       <body
-        className="min-h-full flex flex-col"
+        className="min-h-full flex"
         style={{ backgroundColor: "var(--tl-page)", color: "var(--tl-text-primary)" }}
       >
-        <header
-          className="sticky top-0 z-10 border-b px-6 py-3.5 backdrop-blur-sm"
-          style={{ borderColor: "var(--tl-border)", backgroundColor: "color-mix(in srgb, var(--tl-surface) 92%, transparent)" }}
-        >
-          <div className="flex items-center justify-between">
-            <Link href="/" className="inline-flex items-center gap-2.5">
-              <Image
-                src="/logo-mark.png"
-                alt=""
-                width={28}
-                height={28}
-                className="rounded-full shrink-0"
-                priority
-              />
-              <span className="text-sm font-semibold tracking-wide" style={{ color: "var(--tl-text-primary)" }}>
-                TRADING LAB
-              </span>
-            </Link>
-            <div className="flex items-center gap-4">
-              <NavLinks />
-              <span className="h-4 w-px" style={{ backgroundColor: "var(--tl-border)" }} />
-              <ThemeToggle />
-            </div>
-          </div>
-        </header>
-        <main className="flex-1 px-6 py-8 max-w-6xl w-full mx-auto">{children}</main>
+        <Sidebar settings={settings} />
+        <div className="flex-1 flex flex-col min-w-0">
+          <MobileNav />
+          <main className="flex-1 px-6 py-8 max-w-6xl w-full mx-auto">{children}</main>
+        </div>
       </body>
     </html>
   );
