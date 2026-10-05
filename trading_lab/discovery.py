@@ -10,6 +10,7 @@ here is a hypothesis, not an edge -- see validate.py for what has to happen next
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -116,19 +117,21 @@ def search(
     signals = []
     info_results = []
 
-    for _ in range(n_candidates):
+    for i in range(n_candidates):
         candidate = sample_candidate(df, rng)
         signal = candidate.signal(df)
-        if signal.sum() < min_trades:
-            continue
+        if signal.sum() >= min_trades:
+            info = test_information(df, signal, horizon=information_horizon, min_observations=min_trades)
+            if info is not None:
+                candidates.append(candidate)
+                signals.append(signal)
+                info_results.append(info)
 
-        info = test_information(df, signal, horizon=information_horizon, min_observations=min_trades)
-        if info is None:
-            continue
-
-        candidates.append(candidate)
-        signals.append(signal)
-        info_results.append(info)
+        # A combo's discovery loop can run for minutes with nothing else to show for
+        # it -- a periodic heartbeat is the difference between "running" and "stuck"
+        # from the outside (e.g. in the desktop control panel's log).
+        if (i + 1) % 500 == 0:
+            print(f"  pid={os.getpid()} Level-1 scan: {i + 1}/{n_candidates} candidates, {len(candidates)} passed so far", flush=True)
 
     if not candidates:
         return pd.DataFrame(), {"level1_survivors": 0, "statistically_interesting": 0, "research_worthy": 0}

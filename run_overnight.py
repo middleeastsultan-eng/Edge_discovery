@@ -56,18 +56,19 @@ def _run_one_combo(task: tuple) -> dict:
     """
     source, symbol, interval, start, end, n_candidates, seed = task
     tag = f"[{source}] {symbol} {interval}"
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] pid={os.getpid()} {tag} seed={seed} starting ({n_candidates} candidates) ...")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] pid={os.getpid()} {tag} seed={seed} starting ({n_candidates} candidates) ...", flush=True)
 
     try:
         summary = run_experiment(symbol, interval, start, end, n_candidates=n_candidates, seed=seed, source=source)
     except Exception:
-        print(f"  {tag} error, skipping:\n{traceback.format_exc()}")
+        print(f"  {tag} error, skipping:\n{traceback.format_exc()}", flush=True)
         return {"tag": tag, "finalists": 0, "passed": 0}
 
     print(
         f"[{datetime.now().strftime('%H:%M:%S')}] {tag}: {n_candidates} tested -> "
         f"{summary['research_worthy']} research-worthy -> {summary['discovery_survivors']} backtested -> "
-        f"{summary['validation_survivors']} survived validation -> {len(summary['finalists'])} finalist(s)"
+        f"{summary['validation_survivors']} survived validation -> {len(summary['finalists'])} finalist(s)",
+        flush=True,
     )
 
     passed = 0
@@ -75,7 +76,7 @@ def _run_one_combo(task: tuple) -> dict:
         score = f["robustness_score"]["total"]
         label = f["robustness_score"]["label"]
         ok = is_pass(f)
-        print(f"    {tag} {f['rule']}  robustness={score} ({label})  pass={ok}")
+        print(f"    {tag} {f['rule']}  robustness={score} ({label})  pass={ok}", flush=True)
 
         if ok:
             passed += 1
@@ -100,7 +101,7 @@ def _resolve_worker_count(fallback: int) -> tuple[int, bool]:
     try:
         settings = db.get_agent_settings()
     except Exception:
-        print("  (could not reach dashboard settings, using CLI default)")
+        print("  (could not reach dashboard settings, using CLI default)", flush=True)
         return max(1, min(fallback, detected)), False
 
     if settings["paused"]:
@@ -126,8 +127,8 @@ def main():
         f"{args.n_candidates} candidates per combo per pass, {len(DEFAULT_COMBOS)} combos per round.\n"
         f"Will notify only on finalists whose robustness score clears the bar."
     )
-    print(f"{os.cpu_count()} CPU cores detected. Worker count/pause controlled from the dashboard each round.")
-    print("This complements the GitHub Actions schedule -- that keeps running independently while your PC is off.\n")
+    print(f"{os.cpu_count()} CPU cores detected. Worker count/pause controlled from the dashboard each round.", flush=True)
+    print("This complements the GitHub Actions schedule -- that keeps running independently while your PC is off.\n", flush=True)
 
     rounds = 0
     tried = 0
@@ -139,7 +140,7 @@ def main():
             workers, paused = _resolve_worker_count(args.workers)
 
             if paused:
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] Paused from the dashboard. Checking again in 60s ...")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Paused from the dashboard. Checking again in 60s ...", flush=True)
                 time.sleep(60)
                 continue
 
@@ -148,7 +149,7 @@ def main():
                 (source, symbol, interval, start, end, args.n_candidates, rounds * 1000 + i)
                 for i, (source, symbol, interval, start, end) in enumerate(DEFAULT_COMBOS)
             ]
-            print(f"=== Round {rounds}: {len(tasks)} combos queued across {workers} worker(s) ===")
+            print(f"=== Round {rounds}: {len(tasks)} combos queued across {workers} worker(s) ===", flush=True)
 
             with mp.Pool(processes=workers) as pool:
                 for result in pool.imap_unordered(_run_one_combo, tasks):
@@ -158,10 +159,10 @@ def main():
                     if deadline and datetime.now() >= deadline:
                         break
     except KeyboardInterrupt:
-        print("\nStopped by user.")
+        print("\nStopped by user.", flush=True)
 
     send_message(f"Local cluster research finished.\n{rounds} round(s), {tried} combo-passes, {total_finalists} finalist(s), {total_passed} passed.")
-    print(f"\nDone. {rounds} round(s), {tried} combo-passes, {total_finalists} finalists, {total_passed} passed.")
+    print(f"\nDone. {rounds} round(s), {tried} combo-passes, {total_finalists} finalists, {total_passed} passed.", flush=True)
 
 
 if __name__ == "__main__":
