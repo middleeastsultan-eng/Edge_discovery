@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { Radio, ShieldCheck, Activity, Bell, ArrowRight } from "lucide-react";
-import { supabase, type Experiment, type ForwardValidation, type ForwardSignalAlert } from "@/lib/supabase";
+import { Radio, ShieldCheck, Activity, Bell, ArrowRight, Wallet, TrendingDown, Percent } from "lucide-react";
+import { supabase, type Experiment, type ForwardValidation, type ForwardSignalAlert, type PaperAccount, type PaperTrade } from "@/lib/supabase";
 import { StatTile } from "@/components/StatTile";
 import { PageGlow } from "@/components/PageGlow";
-import { formatDateTime, formatPct, formatR } from "@/lib/format";
+import { PaperEquityCurve } from "@/components/PaperEquityCurve";
+import { formatDateTime, formatPct, formatR, formatUSD } from "@/lib/format";
 import {
   TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, BORDER_SOFT,
   STATUS_GOOD, STATUS_WARNING, TABLE_HEADER_BG, ACCENT, tint,
@@ -15,6 +16,9 @@ export const dynamic = "force-dynamic";
 // tracking at all once its backtest robustness_score.total reaches this bar. Alerting
 // is a separate, higher bar earned by live performance (see ForwardStatusBadge below).
 const TRACKING_MIN_SCORE = 80;
+
+// Must match trading_lab/paper_portfolio.py's STARTING_EQUITY.
+const STARTING_EQUITY = 10_000;
 
 type ForwardStatus = "promoted" | "tracking" | "not checked yet";
 
@@ -37,13 +41,15 @@ function ForwardStatusBadge({ status }: { status: ForwardStatus }) {
 }
 
 export default async function LivePage() {
-  const [{ data: expData, error: expError }, { data: fvData }, { data: alertData }] = await Promise.all([
+  const [{ data: expData, error: expError }, { data: fvData }, { data: alertData }, { data: paperAccountData }, { data: paperTradeData }] = await Promise.all([
     supabase
       .from("experiments")
       .select("id, created_at, symbol, interval, rule, robustness_score")
       .order("id", { ascending: false }),
     supabase.from("forward_validation").select("*"),
     supabase.from("forward_signal_alerts").select("*").order("sent_at", { ascending: false }).limit(20),
+    supabase.from("paper_account").select("equity, watermark").eq("id", 1).single(),
+    supabase.from("paper_trades").select("*").order("entry_time", { ascending: true }),
   ]);
 
   if (expError) {
@@ -64,6 +70,18 @@ export default async function LivePage() {
   const trackingCount = tracked.length - promotedCount;
 
   const alerts = (alertData ?? []) as ForwardSignalAlert[];
+
+  const paperAccount = (paperAccountData ?? { equity: STARTING_EQUITY, watermark: null }) as PaperAccount;
+  const paperTrades = (paperTradeData ?? []) as PaperTrade[];
+  const paperReturnPct = paperAccount.equity / STARTING_EQUITY - 1;
+  const paperWinRate = paperTrades.length ? paperTrades.filter((t) => t.pnl_dollars > 0).length / paperTrades.length : null;
+  const paperMaxDrawdown = paperTrades.reduce(
+    (acc, t) => {
+      const peak = Math.max(acc.peak, t.equity_after);
+      return { peak, maxDd: Math.min(acc.maxDd, t.equity_after - peak) };
+    },
+    { peak: STARTING_EQUITY, maxDd: 0 },
+  ).maxDd;
 
   return (
     <div className="space-y-8">
@@ -172,6 +190,43 @@ export default async function LivePage() {
           </table>
         </div>
       )}
+
+      <div>
+        <h2 className="flex items-center gap-2 text-sm font-medium mb-3" style={{ color: TEXT_SECONDARY }}>
+          <Wallet size={15} style={{ color: ACCENT }} />
+          Paper portfolio
+          <span className="font-normal normal-case" style={{ color: TEXT_MUTED, opacity: 0.8 }}>
+            (one simulated account taking every promoted pattern&apos;s signals, sized at 1% risk/trade)
+          </span>
+        </h2>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+          <StatTile label="Equity" value={formatUSD(paperAccount.equity)} icon={Wallet} />
+          <StatTile
+            label="Return since inception"
+            value={formatPct(paperReturnPct)}
+            tone={paperReturnPct > 0 ? "good" : paperReturnPct < 0 ? "bad" : "neutral"}
+            icon={Percent}
+          />
+          <StatTile label="Max drawdown" value={formatUSD(paperMaxDrawdown)} tone={paperMaxDrawdown < 0 ? "bad" : "neutral"} icon={TrendingDown} />
+          <StatTile label="Win rate" value={paperWinRate === null ? "—" : formatPct(paperWinRate)} icon={ShieldCheck} />
+        </div>
+
+        {paperTrades.length === 0 ? (
+          <div
+            className="rounded-2xl px-4 py-10 text-center text-sm"
+            style={{ border: `1px solid ${BORDER}`, backgroundColor: SURFACE, color: TEXT_MUTED }}
+          >
+            No paper trades yet -- the paper account only acts on promoted patterns, and none exist yet.
+            Starting equity is {formatUSD(STARTING_EQUITY)} notional; what matters once trades start is the
+            % return, drawdown, and whether trusting the whole basket together actually works.
+          </div>
+        ) : (
+          <div className="rounded-2xl p-4 shadow-sm" style={{ backgroundColor: SURFACE, border: `1px solid ${BORDER}` }}>
+            <PaperEquityCurve trades={paperTrades} />
+          </div>
+        )}
+      </div>
 
       <div>
         <h2 className="flex items-center gap-2 text-sm font-medium mb-3" style={{ color: TEXT_SECONDARY }}>

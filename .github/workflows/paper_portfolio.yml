@@ -1,0 +1,28 @@
+name: Paper Portfolio
+
+# A single global job, deliberately not a matrix -- the paper ledger is one shared
+# equity sequence across every promoted pattern and symbol. An advisory lock in
+# trading_lab/paper_portfolio.py guards against overlapping runs regardless.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  paper-portfolio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - run: python run_paper_portfolio.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

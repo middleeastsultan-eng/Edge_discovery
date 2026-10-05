@@ -129,6 +129,38 @@ CREATE TABLE IF NOT EXISTS local_agent_settings (
 );
 INSERT INTO local_agent_settings (id, max_workers, paused) VALUES (1, 3, false) ON CONFLICT (id) DO NOTHING;
 
+-- Single simulated account that actually takes signals from promoted (forward-proven)
+-- patterns, sized by real risk rules -- see trading_lab/paper_portfolio.py. id is
+-- always 1; watermark is the entry_time of the last forward trade already processed,
+-- so each run only scans what's new instead of replaying the whole history.
+CREATE TABLE IF NOT EXISTS paper_account (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    equity DOUBLE PRECISION NOT NULL,
+    watermark TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT paper_account_single_row CHECK (id = 1)
+);
+
+-- One row per forward trade actually allocated capital in the paper account -- a subset
+-- of experiment_trades(split='forward'): only trades from patterns that were ALREADY
+-- promoted when the trade's entry_time occurred, and only if sizing it didn't breach
+-- the concurrent-risk cap (skipped trades are logged by the job, not written here).
+CREATE TABLE IF NOT EXISTS paper_trades (
+    id SERIAL PRIMARY KEY,
+    experiment_id INTEGER NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
+    entry_time TIMESTAMPTZ NOT NULL,
+    exit_time TIMESTAMPTZ NOT NULL,
+    r_multiple DOUBLE PRECISION NOT NULL,
+    risked_amount DOUBLE PRECISION NOT NULL,
+    pnl_dollars DOUBLE PRECISION NOT NULL,
+    equity_after DOUBLE PRECISION NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_paper_trades_entry_time ON paper_trades(entry_time);
+
+-- Seed starting equity once -- must match trading_lab.paper_portfolio.STARTING_EQUITY.
+INSERT INTO paper_account (id, equity) VALUES (1, 10000.0) ON CONFLICT (id) DO NOTHING;
+
 -- Supabase exposes every public-schema table over PostgREST; with RLS disabled, anyone
 -- holding the project's anon/public API key can read or write these tables directly over
 -- HTTP, bypassing this app entirely. Enabling RLS with zero policies locks out that
@@ -141,6 +173,8 @@ ALTER TABLE experiment_trades ENABLE ROW LEVEL SECURITY;
 ALTER TABLE local_agent_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE forward_validation ENABLE ROW LEVEL SECURITY;
 ALTER TABLE forward_signal_alerts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE paper_account ENABLE ROW LEVEL SECURITY;
+ALTER TABLE paper_trades ENABLE ROW LEVEL SECURITY;
 """
 
 
@@ -423,3 +457,94 @@ def record_alert_if_new(experiment_id: int, bar_time) -> bool:
             is_new = cur.fetchone() is not None
         conn.commit()
     return is_new
+
+
+# Arbitrary but fixed 64-bit key for the paper-portfolio advisory lock -- any constant
+# works, it just needs to be the same one every caller uses.
+_PAPER_PORTFOLIO_LOCK_KEY = 849_302_171
+
+
+def try_acquire_paper_portfolio_lock(conn) -> bool:
+    """Cheap insurance against two overlapping scheduled runs double-processing the
+    same global equity sequence. Caller must hold `conn` open for the duration of the
+    critical section -- the lock releases automatically when the session ends.
+    """
+    with conn.cursor() as cur:
+        cur.execute("SELECT pg_try_advisory_lock(%s)", (_PAPER_PORTFOLIO_LOCK_KEY,))
+        return bool(cur.fetchone()[0])
+
+
+def get_paper_account() -> dict:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT equity, watermark FROM paper_account WHERE id = 1")
+            row = cur.fetchone()
+            return {"equity": row[0], "watermark": row[1]}
+
+
+def upsert_paper_account(equity: float, watermark) -> None:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE paper_account SET equity = %s, watermark = %s, updated_at = now()
+                WHERE id = 1
+                """,
+                (equity, watermark),
+            )
+        conn.commit()
+
+
+def insert_paper_trade(experiment_id: int, entry_time, exit_time, r_multiple: float,
+                        risked_amount: float, pnl_dollars: float, equity_after: float) -> None:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO paper_trades
+                    (experiment_id, entry_time, exit_time, r_multiple, risked_amount, pnl_dollars, equity_after)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (experiment_id, entry_time, exit_time, r_multiple, risked_amount, pnl_dollars, equity_after),
+            )
+        conn.commit()
+
+
+def list_paper_trades() -> pd.DataFrame:
+    with get_connection() as conn:
+        return pd.read_sql(
+            "SELECT * FROM paper_trades ORDER BY entry_time",
+            conn,
+        )
+
+
+def get_promoted_patterns_with_promotion_time() -> pd.DataFrame:
+    """Every pattern currently promoted, with the timestamp it earned that status --
+    trades that closed before promoted_at don't count (that would be hindsight bias:
+    crediting the account with wins the pattern hadn't yet proven itself capable of).
+    """
+    with get_connection() as conn:
+        return pd.read_sql(
+            """
+            SELECT e.id AS experiment_id, fv.promoted_at
+            FROM experiments e
+            JOIN forward_validation fv ON fv.experiment_id = e.id
+            WHERE fv.status = 'promoted' AND fv.promoted_at IS NOT NULL
+            """,
+            conn,
+        )
+
+
+def get_unprocessed_forward_trades(experiment_id: int, after) -> pd.DataFrame:
+    """Forward trades for one pattern with entry_time strictly after `after` (either the
+    pattern's promoted_at or the paper account's watermark, whichever the caller needs).
+    """
+    with get_connection() as conn:
+        return pd.read_sql(
+            """
+            SELECT entry_time, exit_time, r_multiple FROM experiment_trades
+            WHERE experiment_id = %(experiment_id)s AND split = 'forward' AND entry_time > %(after)s
+            ORDER BY entry_time
+            """,
+            conn, params={"experiment_id": experiment_id, "after": after},
+        )

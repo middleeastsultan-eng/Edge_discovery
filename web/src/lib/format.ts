@@ -9,6 +9,12 @@ export function formatPct(value: number | null | undefined, digits = 0): string 
   return `${(value * 100).toFixed(digits)}%`;
 }
 
+export function formatUSD(value: number | null | undefined, digits = 2): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${sign}$${Math.abs(value).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+}
+
 export function formatNum(value: number | null | undefined, digits = 2): string {
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
   if (!Number.isFinite(value)) return "∞";

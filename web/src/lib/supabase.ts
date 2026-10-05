@@ -152,3 +152,21 @@ export type ForwardSignalAlert = {
   bar_time: string;
   sent_at: string;
 };
+
+// Single simulated account that takes signals from promoted patterns only, sized by
+// fixed-fractional risk -- see trading_lab/paper_portfolio.py.
+export type PaperAccount = {
+  equity: number;
+  watermark: string | null;
+};
+
+export type PaperTrade = {
+  id: number;
+  experiment_id: number;
+  entry_time: string;
+  exit_time: string;
+  r_multiple: number;
+  risked_amount: number;
+  pnl_dollars: number;
+  equity_after: number;
+};
