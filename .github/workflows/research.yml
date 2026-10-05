@@ -1,8 +1,11 @@
 name: Overnight Research
 
 on:
-  schedule:
-    - cron: "*/20 * * * *"
+  # Schedule paused while the discovery funnel logic is being reworked (single-best-of-800
+  # selection was overfitting-prone -- see commit history). Re-enable the cron line once the
+  # funnel/ledger/threshold rework lands and has been tested with workflow_dispatch.
+  # schedule:
+  #   - cron: "*/20 * * * *"
   workflow_dispatch: {}
 
 jobs:
