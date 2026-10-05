@@ -117,6 +117,11 @@ export type ResearchRun = {
   finalists_count: number;
 };
 
+export type AgentSettings = {
+  max_workers: number;
+  paused: boolean;
+};
+
 export type ExperimentTrade = {
   id: number;
   experiment_id: number;

@@ -1,5 +1,5 @@
 import { CheckCircle2 } from "lucide-react";
-import { supabase, type ResearchRun, type Experiment } from "@/lib/supabase";
+import { supabase, type ResearchRun, type Experiment, type AgentSettings } from "@/lib/supabase";
 import {
   computeFunnelTotals,
   funnelStages,
@@ -8,6 +8,7 @@ import {
   perAssetMatrix,
 } from "@/lib/researchHealth";
 import { CumulativeTrends } from "@/components/CumulativeTrends";
+import { ComputeControl } from "@/components/ComputeControl";
 import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, STATUS_GOOD } from "@/lib/theme";
 
 export const dynamic = "force-dynamic";
@@ -19,9 +20,10 @@ function formatPct(x: number): string {
 }
 
 export default async function ResearchHealth() {
-  const [{ data: runsData, error: runsError }, { data: expData, error: expError }] = await Promise.all([
+  const [{ data: runsData, error: runsError }, { data: expData, error: expError }, { data: settingsData }] = await Promise.all([
     supabase.from("research_runs").select("*").order("created_at", { ascending: true }).limit(5000),
     supabase.from("experiments").select("*").order("created_at", { ascending: true }).limit(5000),
+    supabase.from("local_agent_settings").select("max_workers, paused").eq("id", 1).single(),
   ]);
 
   if (runsError || expError) {
@@ -34,6 +36,7 @@ export default async function ResearchHealth() {
 
   const runs = (runsData ?? []) as ResearchRun[];
   const experiments = (expData ?? []) as Experiment[];
+  const agentSettings = (settingsData ?? { max_workers: 3, paused: false }) as AgentSettings;
 
   const totals = computeFunnelTotals(runs, experiments);
   const stages = funnelStages(totals);
@@ -55,6 +58,8 @@ export default async function ResearchHealth() {
           not about any single experiment.
         </p>
       </div>
+
+      <ComputeControl settings={agentSettings} />
 
       {/* 1. Funnel totals */}
       <section className="rounded-xl p-4 shadow-sm" style={cardStyle}>

@@ -83,6 +83,18 @@ CREATE TABLE IF NOT EXISTS experiment_trades (
 );
 
 CREATE INDEX IF NOT EXISTS idx_experiment_trades_experiment_id ON experiment_trades(experiment_id);
+
+-- Single-row remote control for the local multiprocessing research loop (run_overnight.py).
+-- The dashboard writes here; the local script polls it once per round to decide how many
+-- worker processes to run and whether to pause. id is always 1 -- not a history, a live knob.
+CREATE TABLE IF NOT EXISTS local_agent_settings (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    max_workers INTEGER NOT NULL DEFAULT 3,
+    paused BOOLEAN NOT NULL DEFAULT false,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT local_agent_settings_single_row CHECK (id = 1)
+);
+INSERT INTO local_agent_settings (id, max_workers, paused) VALUES (1, 3, false) ON CONFLICT (id) DO NOTHING;
 """
 
 
@@ -201,6 +213,31 @@ def total_hypotheses_tested() -> int:
         with conn.cursor() as cur:
             cur.execute("SELECT COALESCE(SUM(hypotheses_tested), 0) FROM research_runs")
             return int(cur.fetchone()[0])
+
+
+def get_agent_settings() -> dict:
+    """Read the live remote-control settings for the local multiprocessing loop."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT max_workers, paused FROM local_agent_settings WHERE id = 1")
+            row = cur.fetchone()
+            if row is None:
+                return {"max_workers": 3, "paused": False}
+            return {"max_workers": row[0], "paused": row[1]}
+
+
+def set_agent_settings(max_workers: int, paused: bool) -> None:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO local_agent_settings (id, max_workers, paused, updated_at)
+                VALUES (1, %s, %s, now())
+                ON CONFLICT (id) DO UPDATE SET max_workers = %s, paused = %s, updated_at = now()
+                """,
+                (max_workers, paused, max_workers, paused),
+            )
+        conn.commit()
 
 
 def save_trades(experiment_id: int, trades: pd.DataFrame, split: str) -> None:
