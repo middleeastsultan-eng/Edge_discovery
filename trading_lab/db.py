@@ -12,6 +12,20 @@ import psycopg2.extras
 from .config import DATABASE_URL
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS research_runs (
+    id SERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    symbol TEXT NOT NULL,
+    interval TEXT NOT NULL,
+    source TEXT NOT NULL,
+    seed INTEGER NOT NULL,
+    hypotheses_tested INTEGER NOT NULL,
+    discovery_survivors INTEGER NOT NULL,
+    funnel_top_k INTEGER NOT NULL,
+    validation_survivors INTEGER NOT NULL,
+    finalists_count INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS experiments (
     id SERIAL PRIMARY KEY,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -28,12 +42,14 @@ CREATE TABLE IF NOT EXISTS experiments (
     monte_carlo JSONB,
     cost_stress JSONB,
     parameter_stability JSONB,
-    robustness_score JSONB
+    robustness_score JSONB,
+    research_run_id INTEGER REFERENCES research_runs(id) ON DELETE SET NULL
 );
 
 ALTER TABLE experiments ADD COLUMN IF NOT EXISTS cost_stress JSONB;
 ALTER TABLE experiments ADD COLUMN IF NOT EXISTS parameter_stability JSONB;
 ALTER TABLE experiments ADD COLUMN IF NOT EXISTS robustness_score JSONB;
+ALTER TABLE experiments ADD COLUMN IF NOT EXISTS research_run_id INTEGER REFERENCES research_runs(id) ON DELETE SET NULL;
 
 CREATE TABLE IF NOT EXISTS experiment_trades (
     id SERIAL PRIMARY KEY,
@@ -75,6 +91,38 @@ def _df_to_json(df: pd.DataFrame | None) -> str | None:
     return df.to_json(orient="records", date_format="iso")
 
 
+def save_research_run(
+    symbol: str,
+    interval: str,
+    source: str,
+    seed: int,
+    hypotheses_tested: int,
+    discovery_survivors: int,
+    funnel_top_k: int,
+    validation_survivors: int,
+    finalists_count: int,
+) -> int:
+    """Log one discovery pass for the hypothesis ledger -- recorded regardless of
+    outcome, so 'how many hypotheses have we tested total' is a real, queryable number.
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO research_runs
+                    (symbol, interval, source, seed, hypotheses_tested, discovery_survivors,
+                     funnel_top_k, validation_survivors, finalists_count)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (symbol, interval, source, seed, hypotheses_tested, discovery_survivors,
+                 funnel_top_k, validation_survivors, finalists_count),
+            )
+            run_id = cur.fetchone()[0]
+        conn.commit()
+    return run_id
+
+
 def save_experiment(
     symbol: str,
     interval: str,
@@ -90,6 +138,7 @@ def save_experiment(
     cost_stress: pd.DataFrame | None = None,
     parameter_stability: dict | None = None,
     robustness_score: dict | None = None,
+    research_run_id: int | None = None,
 ) -> int:
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -98,8 +147,8 @@ def save_experiment(
                 INSERT INTO experiments
                     (symbol, interval, start_date, end_date, rule, clauses,
                      discovery_stats, validation_stats, test_stats, walk_forward, monte_carlo,
-                     cost_stress, parameter_stability, robustness_score)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     cost_stress, parameter_stability, robustness_score, research_run_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
@@ -113,11 +162,19 @@ def save_experiment(
                     _df_to_json(cost_stress),
                     json.dumps(parameter_stability) if parameter_stability else None,
                     json.dumps(robustness_score) if robustness_score else None,
+                    research_run_id,
                 ),
             )
             experiment_id = cur.fetchone()[0]
         conn.commit()
     return experiment_id
+
+
+def total_hypotheses_tested() -> int:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COALESCE(SUM(hypotheses_tested), 0) FROM research_runs")
+            return int(cur.fetchone()[0])
 
 
 def save_trades(experiment_id: int, trades: pd.DataFrame, split: str) -> None:

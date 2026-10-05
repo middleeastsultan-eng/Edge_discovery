@@ -1,8 +1,10 @@
 """Overnight research loop: repeatedly searches for edges across assets/timeframes and
-pings Telegram only when a candidate actually survives validation.
+pings Telegram only when a finalist's robustness score clears the bar.
 
 Leave this running in a terminal on a machine that stays on -- there's no cloud worker
-yet, so it only searches while your computer is awake and this process is alive.
+yet, so it only searches while your computer is awake and this process is alive. For
+research that continues even with your computer off, use the scheduled GitHub Actions
+workflow (.github/workflows/research.yml, driven by run_scheduled.py) instead.
 
 Usage:
     python run_overnight.py --hours 8
@@ -37,9 +39,7 @@ DEFAULT_COMBOS = [
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--hours", type=float, default=8.0, help="how long to keep searching")
-    parser.add_argument("--n-candidates", type=int, default=2000, help="random hypotheses searched per run")
-    parser.add_argument("--min-trades", type=int, default=30)
-    parser.add_argument("--min-robustness", type=float, default=55.0, help="minimum score to notify about")
+    parser.add_argument("--n-candidates", type=int, default=2000, help="random hypotheses searched per combo per pass")
     args = parser.parse_args()
 
     deadline = datetime.now() + timedelta(hours=args.hours)
@@ -47,11 +47,11 @@ def main():
         f"Overnight research started.\n"
         f"Running until {deadline.strftime('%Y-%m-%d %H:%M')} ({args.hours}h).\n"
         f"Assets: BTC, ETH, SPY, QQQ across multiple timeframes.\n"
-        f"Will notify only if something survives validation (robustness >= {args.min_robustness})."
+        f"Will notify only on finalists whose robustness score clears the bar."
     )
 
     tried = 0
-    found = 0
+    total_finalists = 0
     seed = 0
 
     try:
@@ -65,46 +65,36 @@ def main():
                 print(f"\n[{datetime.now().strftime('%H:%M:%S')}] #{tried} Searching [{source}] {symbol} {interval} (seed {seed}) ...")
 
                 try:
-                    result = run_experiment(
-                        symbol,
-                        interval,
-                        start,
-                        end,
-                        n_candidates=args.n_candidates,
-                        min_trades=args.min_trades,
-                        seed=seed,
-                        source=source,
-                    )
+                    summary = run_experiment(symbol, interval, start, end, n_candidates=args.n_candidates, seed=seed, source=source)
                 except Exception:
                     print(f"  error, skipping: {traceback.format_exc()}")
                     continue
 
-                if result is None:
-                    print("  no candidate produced enough trades")
-                    continue
+                print(f"  {args.n_candidates} tested -> {summary['discovery_survivors']} met discovery minimum -> "
+                      f"{summary['validation_survivors']} survived validation -> {len(summary['finalists'])} finalist(s)")
 
-                score = result["robustness_score"]["total"]
-                passed = is_pass(result)
-                print(f"  {result['rule']}")
-                print(f"  robustness={score}  pass={passed}  val_exp={result['validation_stats'].expectancy_r:.3f}R  test_exp={result['test_stats'].expectancy_r:.3f}R")
+                for f in summary["finalists"]:
+                    score = f["robustness_score"]["total"]
+                    label = f["robustness_score"]["label"]
+                    passed = is_pass(f)
+                    print(f"    {f['rule']}  robustness={score} ({label})  pass={passed}")
 
-                if passed and score >= args.min_robustness:
-                    found += 1
-                    link = f"{DASHBOARD_URL}/experiments/{result['experiment_id']}" if DASHBOARD_URL else ""
-                    send_message(
-                        f"Candidate survived validation ({symbol} {interval})\n\n"
-                        f"Rule: {result['rule']}\n"
-                        f"Robustness score: {score}/100\n"
-                        f"Validation expectancy: {result['validation_stats'].expectancy_r:.3f}R\n"
-                        f"Test expectancy: {result['test_stats'].expectancy_r:.3f}R\n"
-                        f"Test trades: {result['test_stats'].n_trades}\n"
-                        + (f"\n{link}" if link else "")
-                    )
+                    if passed:
+                        total_finalists += 1
+                        link = f"{DASHBOARD_URL}/experiments/{f['experiment_id']}" if DASHBOARD_URL else ""
+                        send_message(
+                            f"Candidate survived validation ({symbol} {interval})\n\n"
+                            f"Rule: {f['rule']}\n"
+                            f"Robustness: {score}/100 ({label})\n"
+                            f"Validation expectancy: {f['validation_stats'].expectancy_r:.3f}R ({f['validation_stats'].n_trades} trades)\n"
+                            f"Test expectancy: {f['test_stats'].expectancy_r:.3f}R ({f['test_stats'].n_trades} trades)\n"
+                            + (f"\n{link}" if link else "")
+                        )
     except KeyboardInterrupt:
         print("\nStopped by user.")
 
-    send_message(f"Overnight research finished.\n{tried} searches run, {found} candidate(s) survived validation.")
-    print(f"\nDone. {tried} searches, {found} passed.")
+    send_message(f"Overnight research finished.\n{tried} combo-passes run, {total_finalists} candidate(s) passed.")
+    print(f"\nDone. {tried} combo-passes, {total_finalists} passed.")
 
 
 if __name__ == "__main__":

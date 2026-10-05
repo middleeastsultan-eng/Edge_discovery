@@ -160,6 +160,37 @@ def parameter_stability_score(perturbation_df: pd.DataFrame, min_trades: int = 1
     return float((usable["expectancy_r"] > 0).mean())
 
 
+def profit_concentration(r_multiples: np.ndarray | pd.Series, top_n: int = 5) -> float:
+    """Fraction of total winning R contributed by the biggest top_n winning trades.
+    High concentration means the edge's apparent profitability hinges on a handful
+    of lucky trades rather than a broad, repeatable effect. Returns 0.0 if there are
+    no winning trades to concentrate.
+    """
+    r = np.asarray(r_multiples, dtype=float)
+    wins = r[r > 0]
+    if len(wins) == 0:
+        return 0.0
+    total = wins.sum()
+    if total <= 0:
+        return 0.0
+    top = np.sort(wins)[-top_n:]
+    return float(top.sum() / total)
+
+
+def score_label(total: float) -> str:
+    """Qualitative band instead of treating e.g. 73.4/100 as a precise measurement.
+    'Validated' is deliberately not a backtest-stage label -- reserved for candidates
+    that have also survived forward paper trading, which this score alone can't claim.
+    """
+    if total >= 80:
+        return "Strong"
+    if total >= 65:
+        return "Promising"
+    if total >= 45:
+        return "Weak"
+    return "Reject"
+
+
 def _clamp(x: float, lo: float = 0.0, hi: float = 100.0) -> float:
     return max(lo, min(hi, x))
 
@@ -171,6 +202,7 @@ def robustness_score(
     walk_forward_df: pd.DataFrame,
     param_stability: float,
     cost_stress_df: pd.DataFrame,
+    test_trades: pd.DataFrame | None = None,
 ) -> dict:
     """Composite 0-100 score across the dimensions that distinguish a real edge from
     an overfit one. Components are shown individually -- the total is a summary, not
@@ -244,6 +276,12 @@ def robustness_score(
     if discovery_stats.expectancy_r > 0 and test_stats.expectancy_r < discovery_stats.expectancy_r * 0.5:
         red_flags.append("Test expectancy is less than half of discovery expectancy -- likely overfitting")
 
+    # 9. Profit concentration -- is this a broad effect or a handful of lucky trades?
+    concentration = profit_concentration(test_trades["r_multiple"]) if test_trades is not None and len(test_trades) else 1.0
+    concentration_score = _clamp(100 * (1 - concentration))
+    if concentration > 0.5:
+        red_flags.append(f"Top 5 winning test trades account for {concentration * 100:.0f}% of total profit -- fragile")
+
     components = {
         "expectancy": round(expectancy_score, 1),
         "oos_consistency": round(oos_consistency_score, 1),
@@ -253,7 +291,8 @@ def robustness_score(
         "sample_size": round(sample_score, 1),
         "drawdown": round(drawdown_score, 1),
         "overfitting_resistance": round(degradation_score, 1),
+        "profit_concentration": round(concentration_score, 1),
     }
     total = round(sum(components.values()) / len(components), 1)
 
-    return {"total": total, "components": components, "red_flags": red_flags}
+    return {"total": total, "label": score_label(total), "components": components, "red_flags": red_flags}

@@ -11,6 +11,14 @@ const COMPONENT_LABELS: Record<string, string> = {
   sample_size: "Sample size",
   drawdown: "Drawdown",
   overfitting_resistance: "Overfitting resistance",
+  profit_concentration: "Profit concentration",
+};
+
+const LABEL_COLOR: Record<string, string> = {
+  Strong: STATUS_GOOD,
+  Promising: STATUS_WARNING,
+  Weak: STATUS_SERIOUS,
+  Reject: STATUS_CRITICAL,
 };
 
 function scoreColor(value: number): string {
@@ -35,6 +43,12 @@ export function RobustnessScore({ score }: { score: NonNullable<Experiment["robu
           <div className="flex items-center gap-1.5 text-sm font-medium" style={{ color: TEXT_PRIMARY }}>
             <Gauge size={14} style={{ color: totalColor }} />
             Robustness score
+            <span
+              className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
+              style={{ color: LABEL_COLOR[score.label], backgroundColor: `${LABEL_COLOR[score.label]}1a` }}
+            >
+              {score.label}
+            </span>
           </div>
           <p className="text-xs mt-0.5 max-w-md" style={{ color: TEXT_MUTED }}>
             A summary across the dimensions that separate a real edge from an overfit one.

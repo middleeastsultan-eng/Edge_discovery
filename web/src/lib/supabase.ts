@@ -64,6 +64,7 @@ export type Experiment = {
   } | null;
   robustness_score: {
     total: number;
+    label: "Strong" | "Promising" | "Weak" | "Reject";
     components: {
       expectancy: number;
       oos_consistency: number;
@@ -73,6 +74,7 @@ export type Experiment = {
       sample_size: number;
       drawdown: number;
       overfitting_resistance: number;
+      profit_concentration: number;
     };
     red_flags: string[];
   } | null;

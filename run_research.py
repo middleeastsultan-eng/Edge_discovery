@@ -1,11 +1,11 @@
-"""One detailed, interactive research run: fetch data -> discover candidates -> validate the best one.
+"""One detailed, interactive research run: fetch data -> discover -> funnel -> validate.
 
 Usage:
     python run_research.py --symbol BTCUSDT --interval 1h --start 2019-01-01 --end 2026-01-01
     python run_research.py --source stocks --symbol SPY --interval 15Min --start 2020-08-01 --end 2026-01-01
 
-For unattended overnight searching across multiple assets with Telegram
-notifications, use run_overnight.py instead.
+For unattended searching across multiple assets with Telegram notifications,
+use run_overnight.py or run_scheduled.py instead.
 """
 
 from __future__ import annotations
@@ -13,6 +13,45 @@ from __future__ import annotations
 import argparse
 
 from trading_lab.pipeline import run_experiment
+
+
+def print_finalist(f: dict) -> None:
+    print(f"\n{'=' * 70}")
+    print(f"{f['symbol']} {f['interval']}  —  {f['rule']}")
+    print(f"{'=' * 70}")
+
+    print(f"\nDiscovery:  {f['discovery_stats'].as_dict()}")
+    print(f"Validation: {f['validation_stats'].as_dict()}")
+    print(f"Test:       {f['test_stats'].as_dict()}")
+
+    print("\nWalk-forward consistency:")
+    wf = f["walk_forward"]
+    print(wf[["window", "start", "end", "n_trades", "win_rate", "expectancy_r", "profit_factor"]].to_string(index=False))
+
+    if f["monte_carlo"]:
+        print("\nMonte Carlo (bootstrap resample of test trades, 5000 sims):")
+        for k, v in f["monte_carlo"].items():
+            print(f"  {k}: {v:.4f}")
+
+    print("\nCost stress (fees + slippage multiplied up, on test set):")
+    print(f["cost_stress"][["cost_multiplier", "n_trades", "expectancy_r", "profit_factor"]].to_string(index=False))
+
+    print("\nParameter perturbation (on discovery set):")
+    pert = f["parameter_perturbation"]
+    print(pert[["feature", "step_frac", "perturbed_value", "n_trades", "expectancy_r"]].to_string(index=False))
+    print(f"  parameter stability score: {f['parameter_stability_score']:.2f}")
+
+    score = f["robustness_score"]
+    print(f"\nRobustness score: {score['total']}/100  ({score['label']})")
+    for k, v in score["components"].items():
+        print(f"  {k}: {v}")
+    if score["red_flags"]:
+        print("  Red flags:")
+        for flag in score["red_flags"]:
+            print(f"    - {flag}")
+
+    if f["experiment_id"]:
+        print(f"\nSaved as experiment id {f['experiment_id']}")
 
 
 def main():
@@ -23,70 +62,48 @@ def main():
     parser.add_argument("--start", default="2019-01-01", help="stocks: free Alpaca data starts ~2020-08")
     parser.add_argument("--end", default="2026-01-01")
     parser.add_argument("--n-candidates", type=int, default=3000)
-    parser.add_argument("--min-trades", type=int, default=30)
-    parser.add_argument("--top-k", type=int, default=5)
+    parser.add_argument("--discovery-min-trades", type=int, default=100)
+    parser.add_argument("--validation-min-trades", type=int, default=30)
+    parser.add_argument("--test-min-trades", type=int, default=30)
+    parser.add_argument("--funnel-top-k", type=int, default=30, help="how many discovery survivors advance to validation")
+    parser.add_argument("--max-finalists", type=int, default=3, help="how many validation survivors reach the final test")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--no-save", action="store_true", help="skip writing results to the database")
     args = parser.parse_args()
 
     print(f"Running [{args.source}] {args.symbol} {args.interval} {args.start} -> {args.end}, {args.n_candidates} candidates ...")
 
-    result = run_experiment(
+    summary = run_experiment(
         symbol=args.symbol,
         interval=args.interval,
         start=args.start,
         end=args.end,
         n_candidates=args.n_candidates,
-        min_trades=args.min_trades,
+        discovery_min_trades=args.discovery_min_trades,
+        validation_min_trades=args.validation_min_trades,
+        test_min_trades=args.test_min_trades,
+        funnel_top_k=args.funnel_top_k,
+        max_finalists=args.max_finalists,
         seed=args.seed,
         save=not args.no_save,
         source=args.source,
     )
 
-    if result is None:
-        print("No candidate produced enough trades. Try more candidates, a lower min-trades, or more data.")
+    print(f"\n{args.n_candidates} hypotheses tested -> {summary['discovery_survivors']} met discovery trade minimum "
+          f"-> top {summary['funnel_top_k']} entered the funnel -> {summary['validation_survivors']} survived "
+          f"validation -> {len(summary['finalists'])} finalist(s) reached the final test.")
+
+    if not summary["finalists"]:
+        print("\nNo finalist made it through the whole pipeline this run. That's the normal/expected outcome")
+        print("most of the time -- it means nothing this run survived independent validation, not that")
+        print("something is broken.")
         return
 
-    discovery_results = result["discovery_results"]
-    print(f"\nTop {args.top_k} candidates on DISCOVERY data (these numbers are expected to be optimistic):")
-    print(discovery_results.head(args.top_k)[["rule", "n_trades", "win_rate", "expectancy_r", "profit_factor", "max_drawdown_r"]].to_string(index=False))
+    for f in summary["finalists"]:
+        print_finalist(f)
 
-    print(f"\n=== Validating best candidate: {result['rule']} ===")
-    print(f"\nValidation set: {result['validation_stats'].as_dict()}")
-    print(f"Final out-of-sample test set: {result['test_stats'].as_dict()}")
-
-    print("\nWalk-forward consistency across the full dataset:")
-    wf = result["walk_forward"]
-    print(wf[["window", "start", "end", "n_trades", "win_rate", "expectancy_r", "profit_factor"]].to_string(index=False))
-
-    if result["monte_carlo"]:
-        print("\nMonte Carlo (bootstrap resample of out-of-sample trades, 5000 sims):")
-        for k, v in result["monte_carlo"].items():
-            print(f"  {k}: {v:.4f}")
-
-    print("\nCost stress test (fees + slippage multiplied up) on the final test set:")
-    print(result["cost_stress"][["cost_multiplier", "n_trades", "expectancy_r", "profit_factor"]].to_string(index=False))
-
-    print("\nParameter perturbation (nudging each threshold, on the discovery set):")
-    pert = result["parameter_perturbation"]
-    print(pert[["feature", "step_frac", "perturbed_value", "n_trades", "expectancy_r"]].to_string(index=False))
-    print(f"  parameter stability score: {result['parameter_stability_score']:.2f} (fraction of perturbations that stayed profitable)")
-
-    score = result["robustness_score"]
-    print(f"\nRobustness score: {score['total']}/100")
-    for k, v in score["components"].items():
-        print(f"  {k}: {v}")
-    if score["red_flags"]:
-        print("  Red flags:")
-        for flag in score["red_flags"]:
-            print(f"    - {flag}")
-
-    print("\nReminder: discovery-set numbers are optimistic by construction (this is what")
-    print("the search was optimizing for). Trust the validation/test/walk-forward numbers,")
-    print("and be suspicious of a candidate whose edge only shows up in one of these splits.")
-
-    if result["experiment_id"]:
-        print(f"\nSaved as experiment id {result['experiment_id']}")
+    print("\nReminder: discovery-set numbers are optimistic by construction. Trust validation/test/walk-forward,")
+    print("and be suspicious of a finalist whose edge only shows up in one of these splits.")
 
 
 if __name__ == "__main__":
