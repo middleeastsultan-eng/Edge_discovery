@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { supabase, type Experiment } from "@/lib/supabase";
+import { supabase, type Experiment, type ExperimentTrade } from "@/lib/supabase";
 import { verdict } from "@/lib/evaluate";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StatTile } from "@/components/StatTile";
 import { StatsGrid } from "@/components/StatsGrid";
+import { EquityCurve } from "@/components/EquityCurve";
 import { formatDateTime, formatNum, formatPct, formatR } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +26,12 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
   const exp = data as Experiment;
   const v = verdict(exp);
   const mc = exp.monte_carlo;
+
+  const { data: trades } = await supabase
+    .from("experiment_trades")
+    .select("*")
+    .eq("experiment_id", exp.id)
+    .order("entry_time", { ascending: true });
 
   return (
     <div className="space-y-10">
@@ -61,6 +68,15 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
           Final out-of-sample test set
         </h2>
         <StatsGrid stats={exp.test_stats} />
+      </section>
+
+      <section>
+        <h2 className="text-sm font-medium text-[#898781] uppercase tracking-wide mb-3">
+          Equity curve
+        </h2>
+        <div className="rounded-lg border border-white/10 bg-[#1a1a19] p-4">
+          <EquityCurve trades={(trades ?? []) as ExperimentTrade[]} />
+        </div>
       </section>
 
       {exp.walk_forward && exp.walk_forward.length > 0 && (
