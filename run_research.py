@@ -1,29 +1,17 @@
-"""End-to-end research run: fetch data -> discover candidates -> validate the best one.
+"""One detailed, interactive research run: fetch data -> discover candidates -> validate the best one.
 
 Usage:
     python run_research.py --symbol BTCUSDT --interval 1h --start 2019-01-01 --end 2026-01-01
+
+For unattended overnight searching across multiple assets with Telegram
+notifications, use run_overnight.py instead.
 """
 
 from __future__ import annotations
 
 import argparse
 
-from trading_lab import db
-from trading_lab.backtest import BacktestConfig
-from trading_lab.data import get_candles
-from trading_lab.discovery import Candidate, search
-from trading_lab.features import build_features
-from trading_lab.metrics import TradeStats
-from trading_lab.validate import (
-    chronological_split,
-    cost_stress,
-    evaluate_candidate,
-    monte_carlo,
-    parameter_perturbation,
-    parameter_stability_score,
-    robustness_score,
-    walk_forward,
-)
+from trading_lab.pipeline import run_experiment
 
 
 def main():
@@ -35,75 +23,53 @@ def main():
     parser.add_argument("--n-candidates", type=int, default=3000)
     parser.add_argument("--min-trades", type=int, default=30)
     parser.add_argument("--top-k", type=int, default=5)
+    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--no-save", action="store_true", help="skip writing results to the database")
     args = parser.parse_args()
 
-    print(f"Fetching {args.symbol} {args.interval} candles {args.start} -> {args.end} ...")
-    raw = get_candles(args.symbol, args.interval, args.start, args.end)
-    print(f"  {len(raw)} candles fetched/cached.")
+    print(f"Running {args.symbol} {args.interval} {args.start} -> {args.end}, {args.n_candidates} candidates ...")
 
-    print("Building features ...")
-    feats = build_features(raw)
+    result = run_experiment(
+        symbol=args.symbol,
+        interval=args.interval,
+        start=args.start,
+        end=args.end,
+        n_candidates=args.n_candidates,
+        min_trades=args.min_trades,
+        seed=args.seed,
+        save=not args.no_save,
+    )
 
-    print("Splitting chronologically into discovery / validation / test ...")
-    discovery_df, val_df, test_df = chronological_split(feats)
-    print(f"  discovery={len(discovery_df)}  validation={len(val_df)}  test={len(test_df)}")
-
-    config = BacktestConfig()
-
-    print(f"Searching {args.n_candidates} random hypotheses on the discovery set only ...")
-    results = search(discovery_df, n_candidates=args.n_candidates, min_trades=args.min_trades, backtest_config=config)
-
-    if results.empty:
+    if result is None:
         print("No candidate produced enough trades. Try more candidates, a lower min-trades, or more data.")
         return
 
+    discovery_results = result["discovery_results"]
     print(f"\nTop {args.top_k} candidates on DISCOVERY data (these numbers are expected to be optimistic):")
-    print(results.head(args.top_k)[["rule", "n_trades", "win_rate", "expectancy_r", "profit_factor", "max_drawdown_r"]].to_string(index=False))
+    print(discovery_results.head(args.top_k)[["rule", "n_trades", "win_rate", "expectancy_r", "profit_factor", "max_drawdown_r"]].to_string(index=False))
 
-    best = results.iloc[0]
-    clauses = best["clauses"]
-    cand_obj = Candidate(clauses=clauses)
-    discovery_stats = TradeStats(
-        n_trades=int(best["n_trades"]),
-        win_rate=float(best["win_rate"]),
-        expectancy_r=float(best["expectancy_r"]),
-        profit_factor=float(best["profit_factor"]),
-        sharpe=float(best["sharpe"]),
-        max_drawdown_r=float(best["max_drawdown_r"]),
-        avg_win_r=float(best["avg_win_r"]),
-        avg_loss_r=float(best["avg_loss_r"]),
-    )
-
-    print(f"\n=== Validating best candidate: {best['rule']} ===")
-
-    val_stats, val_trades = evaluate_candidate(val_df, cand_obj, config)
-    print(f"\nValidation set: {val_stats.as_dict()}")
-
-    test_stats, test_trades = evaluate_candidate(test_df, cand_obj, config)
-    print(f"Final out-of-sample test set: {test_stats.as_dict()}")
+    print(f"\n=== Validating best candidate: {result['rule']} ===")
+    print(f"\nValidation set: {result['validation_stats'].as_dict()}")
+    print(f"Final out-of-sample test set: {result['test_stats'].as_dict()}")
 
     print("\nWalk-forward consistency across the full dataset:")
-    wf = walk_forward(feats, cand_obj, n_windows=6, config=config)
+    wf = result["walk_forward"]
     print(wf[["window", "start", "end", "n_trades", "win_rate", "expectancy_r", "profit_factor"]].to_string(index=False))
 
-    mc = monte_carlo(test_trades["r_multiple"]) if len(test_trades) else None
-    if mc:
+    if result["monte_carlo"]:
         print("\nMonte Carlo (bootstrap resample of out-of-sample trades, 5000 sims):")
-        for k, v in mc.items():
+        for k, v in result["monte_carlo"].items():
             print(f"  {k}: {v:.4f}")
 
     print("\nCost stress test (fees + slippage multiplied up) on the final test set:")
-    cs = cost_stress(test_df, cand_obj, config)
-    print(cs[["cost_multiplier", "n_trades", "expectancy_r", "profit_factor"]].to_string(index=False))
+    print(result["cost_stress"][["cost_multiplier", "n_trades", "expectancy_r", "profit_factor"]].to_string(index=False))
 
     print("\nParameter perturbation (nudging each threshold, on the discovery set):")
-    pert = parameter_perturbation(discovery_df, cand_obj, config)
+    pert = result["parameter_perturbation"]
     print(pert[["feature", "step_frac", "perturbed_value", "n_trades", "expectancy_r"]].to_string(index=False))
-    stability = parameter_stability_score(pert)
-    print(f"  parameter stability score: {stability:.2f} (fraction of perturbations that stayed profitable)")
+    print(f"  parameter stability score: {result['parameter_stability_score']:.2f} (fraction of perturbations that stayed profitable)")
 
-    score = robustness_score(discovery_stats, val_stats, test_stats, wf, stability, cs)
+    score = result["robustness_score"]
     print(f"\nRobustness score: {score['total']}/100")
     for k, v in score["components"].items():
         print(f"  {k}: {v}")
@@ -116,27 +82,8 @@ def main():
     print("the search was optimizing for). Trust the validation/test/walk-forward numbers,")
     print("and be suspicious of a candidate whose edge only shows up in one of these splits.")
 
-    if not args.no_save:
-        print("\nSaving experiment to database ...")
-        experiment_id = db.save_experiment(
-            symbol=args.symbol,
-            interval=args.interval,
-            start_date=args.start,
-            end_date=args.end,
-            rule=best["rule"],
-            clauses=clauses,
-            discovery_stats=discovery_stats.as_dict(),
-            validation_stats=val_stats.as_dict(),
-            test_stats=test_stats.as_dict(),
-            walk_forward=wf,
-            monte_carlo=mc,
-            cost_stress=cs,
-            parameter_stability={"score": stability, "perturbations": pert.to_dict(orient="records")},
-            robustness_score=score,
-        )
-        db.save_trades(experiment_id, val_trades, "validation")
-        db.save_trades(experiment_id, test_trades, "test")
-        print(f"  saved as experiment id {experiment_id}")
+    if result["experiment_id"]:
+        print(f"\nSaved as experiment id {result['experiment_id']}")
 
 
 if __name__ == "__main__":
