@@ -54,9 +54,10 @@ def test_information(
         return None
 
     u_stat, p_value = stats.mannwhitneyu(conditional, baseline, alternative="two-sided")
-    # Rank-biserial correlation: -1..+1, 0 = no effect. Independent of sample size,
-    # unlike the p-value, which is why both are reported rather than p-value alone.
-    effect_size = 1 - (2 * u_stat) / (n_cond * n_base)
+    # Rank-biserial correlation: -1..+1, 0 = no effect, positive = conditional tends
+    # greater than baseline. scipy's u_stat is U for the FIRST sample (conditional) --
+    # large when conditional dominates -- so it's (2U/n1n2) - 1, not the reverse.
+    effect_size = (2 * u_stat) / (n_cond * n_base) - 1
 
     cond_mean, base_mean = float(conditional.mean()), float(baseline.mean())
 

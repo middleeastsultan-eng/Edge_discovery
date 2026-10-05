@@ -75,11 +75,20 @@ def run_backtest(df: pd.DataFrame, entry_signal: pd.Series, config: BacktestConf
                 break
 
         if exit_price is None:
+            if last_bar >= n - 1:
+                # No bar exists after last_bar to use as a genuine exit fill -- we're at
+                # the edge of the available data, so this position's true outcome (stop,
+                # target, or a real time-exit) isn't knowable yet. Stop here rather than
+                # fabricate a close with a price that isn't actually a forward fill;
+                # there's nothing further the loop could correctly evaluate anyway.
+                break
             exit_j = last_bar
-            exit_price = opens[min(exit_j + 1, n - 1)] * (1 - slip_frac)
+            exit_price = opens[exit_j + 1] * (1 - slip_frac)
             exit_reason = "time"
 
-        gross_r = (exit_price - raw_entry) / (config.sl_atr * entry_atr)
+        # entry_price (not raw_entry) so the realized R-multiple reflects the full
+        # round-trip slippage cost actually paid, not just the exit side of it.
+        gross_r = (exit_price - entry_price) / (config.sl_atr * entry_atr)
         fee_r = (fee_frac * 2) / ((config.sl_atr * entry_atr) / raw_entry)
         r_multiple = gross_r - fee_r
 
