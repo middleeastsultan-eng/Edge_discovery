@@ -1,182 +1,112 @@
 import Link from "next/link";
-import { FlaskConical, CheckCircle2, Percent, Tags, ArrowRight } from "lucide-react";
-import { supabase, type Experiment } from "@/lib/supabase";
-import { verdict } from "@/lib/evaluate";
-import { StatusBadge } from "@/components/StatusBadge";
+import { ArrowRight, FlaskConical, Radio, Wallet, ShieldCheck } from "lucide-react";
+import { supabase, type Experiment, type ForwardValidation, type PaperAccount } from "@/lib/supabase";
 import { StatTile } from "@/components/StatTile";
-import { StackedBar } from "@/components/StackedBar";
-import { PageGlow } from "@/components/PageGlow";
-import { formatDate, formatNum, formatPct, formatR } from "@/lib/format";
-import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, BORDER_SOFT, STATUS_GOOD, STATUS_CRITICAL, TABLE_HEADER_BG, tint } from "@/lib/theme";
+import { getHeroImage } from "@/lib/pexels";
+import { formatPct, formatUSD } from "@/lib/format";
+import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, ACCENT, ACCENT_FOREGROUND, tint } from "@/lib/theme";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home() {
-  const { data, error } = await supabase
-    .from("experiments")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(100);
+// Must match trading_lab/live.py's TRACKING_MIN_SCORE.
+const TRACKING_MIN_SCORE = 80;
+const STARTING_EQUITY = 10_000;
 
-  if (error) {
-    return (
-      <div
-        className="rounded-lg px-4 py-3 text-sm"
-        style={{ border: `1px solid ${tint(STATUS_CRITICAL, 25)}`, backgroundColor: tint(STATUS_CRITICAL, 10), color: STATUS_CRITICAL }}
-      >
-        Failed to load experiments: {error.message}
-      </div>
-    );
-  }
+const CTAS = [
+  { href: "/experiments", label: "Browse Experiments", icon: FlaskConical, primary: true },
+  { href: "/live", label: "Live Signals", icon: Radio, primary: false },
+  { href: "/research", label: "Research Health", icon: ShieldCheck, primary: false },
+];
 
-  const experiments = (data ?? []) as Experiment[];
-  const passing = experiments.filter((e) => verdict(e) === "pass").length;
-  const failing = experiments.filter((e) => verdict(e) === "fail").length;
-  const insufficient = experiments.filter((e) => verdict(e) === "insufficient").length;
+export default async function WelcomePage() {
+  const [heroImage, { data: expData }, { data: fvData }, { data: paperAccountData }] = await Promise.all([
+    getHeroImage("stock market data screen"),
+    supabase.from("experiments").select("id, robustness_score"),
+    supabase.from("forward_validation").select("status"),
+    supabase.from("paper_account").select("equity").eq("id", 1).single(),
+  ]);
+
+  const experiments = (expData ?? []) as Pick<Experiment, "id" | "robustness_score">[];
+  const tracked = experiments.filter((e) => (e.robustness_score?.total ?? 0) >= TRACKING_MIN_SCORE);
+  const promotedCount = (fvData ?? []).filter((fv) => (fv as ForwardValidation).status === "promoted").length;
+  const paperAccount = (paperAccountData ?? { equity: STARTING_EQUITY }) as Pick<PaperAccount, "equity">;
+  const paperReturnPct = paperAccount.equity / STARTING_EQUITY - 1;
 
   return (
-    <div className="space-y-8">
-      <div className="relative">
-        <PageGlow />
-        <h1 className="text-2xl font-semibold mb-1.5" style={{ color: TEXT_PRIMARY }}>
-          Experiments
-        </h1>
-        <p className="text-sm max-w-2xl" style={{ color: TEXT_MUTED }}>
-          Every candidate rule the discovery engine has found and tested, newest first. Discovery-set
-          numbers are excluded from the pass/fail verdict on purpose — only validation and out-of-sample
-          test performance count.
-        </p>
+    <div className="space-y-10">
+      <div
+        className="relative overflow-hidden rounded-3xl px-6 py-16 sm:px-12 sm:py-24 shadow-sm"
+        style={{ border: `1px solid ${BORDER}` }}
+      >
+        <div
+          aria-hidden
+          className="absolute inset-0 -z-20"
+          style={
+            heroImage
+              ? { backgroundImage: `url(${heroImage})`, backgroundSize: "cover", backgroundPosition: "center" }
+              : { background: `radial-gradient(ellipse at top left, ${tint(ACCENT, 25)}, transparent 60%)`, backgroundColor: "var(--tl-page)" }
+          }
+        />
+        <div aria-hidden className="absolute inset-0 -z-10" style={{ backgroundColor: "color-mix(in srgb, var(--tl-page) 78%, transparent)" }} />
+
+        <div className="relative max-w-2xl">
+          <span
+            className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold tracking-wide"
+            style={{ backgroundColor: ACCENT, color: ACCENT_FOREGROUND }}
+          >
+            EDGE DISCOVERY
+          </span>
+          <h1 className="mt-4 text-3xl sm:text-4xl font-semibold leading-tight" style={{ color: TEXT_PRIMARY }}>
+            Find real trading edges — and prove it before risking a cent.
+          </h1>
+          <p className="mt-4 text-base" style={{ color: TEXT_SECONDARY }}>
+            A backtest score only proves a pattern worked historically. This platform discovers candidate
+            patterns, validates them against data they&apos;ve never seen, then continuously re-checks the
+            survivors against live market data — trust is earned by real performance, not inherited from
+            the backtest.
+          </p>
+
+          <div className="mt-8 flex flex-wrap gap-3">
+            {CTAS.map(({ href, label, icon: Icon, primary }) => (
+              <Link
+                key={href}
+                href={href}
+                className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors"
+                style={
+                  primary
+                    ? { backgroundColor: ACCENT, color: ACCENT_FOREGROUND }
+                    : { backgroundColor: SURFACE, color: TEXT_PRIMARY, border: `1px solid ${BORDER}` }
+                }
+              >
+                <Icon size={15} />
+                {label}
+                <ArrowRight size={14} />
+              </Link>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatTile label="Total experiments" value={String(experiments.length)} icon={FlaskConical} />
+        <StatTile label={`Tracked (score ≥ ${TRACKING_MIN_SCORE})`} value={String(tracked.length)} icon={ShieldCheck} />
         <StatTile
-          label="Survived validation"
-          value={String(passing)}
-          tone={passing > 0 ? "good" : "neutral"}
-          icon={CheckCircle2}
+          label="Promoted (live-proven)"
+          value={String(promotedCount)}
+          tone={promotedCount > 0 ? "good" : "neutral"}
+          icon={Radio}
         />
         <StatTile
-          label="Pass rate"
-          value={experiments.length ? formatPct(passing / experiments.length) : "—"}
-          icon={Percent}
-        />
-        <StatTile
-          label="Symbols covered"
-          value={String(new Set(experiments.map((e) => e.symbol)).size)}
-          icon={Tags}
+          label="Paper portfolio return"
+          value={formatPct(paperReturnPct)}
+          tone={paperReturnPct > 0 ? "good" : paperReturnPct < 0 ? "bad" : "neutral"}
+          icon={Wallet}
         />
       </div>
 
-      {experiments.length > 0 && (
-        <div className="rounded-2xl p-4 shadow-sm" style={{ backgroundColor: SURFACE, border: `1px solid ${BORDER}` }}>
-          <h2 className="text-xs mb-3" style={{ color: TEXT_MUTED }}>
-            Verdict distribution
-          </h2>
-          <StackedBar
-            segments={[
-              { value: passing, color: STATUS_GOOD, label: "Survived validation" },
-              { value: failing, color: STATUS_CRITICAL, label: "Failed validation" },
-              { value: insufficient, color: TEXT_MUTED, label: "Not enough trades" },
-            ]}
-          />
-        </div>
-      )}
-
-      {experiments.length === 0 ? (
-        <div
-          className="rounded-2xl px-4 py-10 text-center text-sm"
-          style={{ border: `1px solid ${BORDER}`, backgroundColor: SURFACE, color: TEXT_MUTED }}
-        >
-          No experiments saved yet. Run{" "}
-          <code style={{ color: TEXT_SECONDARY }}>python run_research.py</code> to generate the first one.
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-2xl shadow-sm" style={{ border: `1px solid ${BORDER}` }}>
-          <table className="w-full text-sm">
-            <thead>
-              <tr
-                className="border-b text-left text-xs"
-                style={{ borderColor: BORDER, backgroundColor: TABLE_HEADER_BG, color: TEXT_MUTED }}
-              >
-                <th className="px-4 py-3 font-medium">Date</th>
-                <th className="px-4 py-3 font-medium">Symbol</th>
-                <th className="px-4 py-3 font-medium">Rule</th>
-                <th className="px-4 py-3 font-medium text-right">Val. expectancy</th>
-                <th className="px-4 py-3 font-medium text-right">Test expectancy</th>
-                <th className="px-4 py-3 font-medium text-right">Test PF</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {experiments.map((exp) => {
-                const valExp = exp.validation_stats?.expectancy_r;
-                const testExp = exp.test_stats?.expectancy_r;
-                return (
-                  <tr
-                    key={exp.id}
-                    className="group border-b last:border-0 transition-colors hover:bg-[var(--tl-text-primary)]/[0.03]"
-                    style={{ borderColor: BORDER_SOFT }}
-                  >
-                    <td className="px-4 py-3 whitespace-nowrap" style={{ color: TEXT_SECONDARY }}>
-                      {formatDate(exp.created_at)}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="font-medium" style={{ color: TEXT_PRIMARY }}>
-                        {exp.symbol}
-                      </span>{" "}
-                      <span style={{ color: TEXT_MUTED }}>{exp.interval}</span>
-                    </td>
-                    <td className="px-4 py-3 max-w-md" style={{ color: TEXT_SECONDARY }}>
-                      <Link
-                        href={`/experiments/${exp.id}`}
-                        className="block truncate transition-colors hover:text-[var(--tl-accent)]"
-                        style={{ fontFamily: "var(--font-geist-mono)" }}
-                        title={exp.rule}
-                      >
-                        {exp.rule}
-                      </Link>
-                      {exp.plain_english && (
-                        <div className="truncate text-xs mt-0.5" style={{ color: TEXT_MUTED }} title={exp.plain_english}>
-                          {exp.plain_english}
-                        </div>
-                      )}
-                    </td>
-                    <td
-                      className="px-4 py-3 text-right tabular-nums"
-                      style={{ color: valExp == null ? TEXT_MUTED : valExp > 0 ? STATUS_GOOD : STATUS_CRITICAL }}
-                    >
-                      {formatR(valExp)}
-                    </td>
-                    <td
-                      className="px-4 py-3 text-right tabular-nums"
-                      style={{ color: testExp == null ? TEXT_MUTED : testExp > 0 ? STATUS_GOOD : STATUS_CRITICAL }}
-                    >
-                      {formatR(testExp)}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>
-                      {formatNum(exp.test_stats?.profit_factor)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge verdict={verdict(exp)} />
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <Link href={`/experiments/${exp.id}`}>
-                        <ArrowRight
-                          size={15}
-                          className="opacity-0 transition-opacity group-hover:opacity-100"
-                          style={{ color: TEXT_MUTED }}
-                        />
-                      </Link>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <p className="text-xs text-center" style={{ color: TEXT_MUTED }}>
+        Paper account: {formatUSD(paperAccount.equity)} notional, started at {formatUSD(STARTING_EQUITY)}.
+      </p>
     </div>
   );
 }

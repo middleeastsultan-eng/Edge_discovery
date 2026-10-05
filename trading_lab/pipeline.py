@@ -30,7 +30,7 @@ from . import db
 from .backtest import BacktestConfig
 from .data import get_candles
 from .data_stocks import get_stock_candles
-from .discovery import Candidate, search
+from .discovery import Candidate, Clause, search
 from .features import build_features
 from .live import TRACKING_MIN_SCORE
 from .metrics import TradeStats
@@ -188,6 +188,91 @@ def run_experiment(
         })
 
     return summary
+
+
+def run_reddit_experiment(
+    clauses: list,
+    symbol: str,
+    interval: str,
+    start: str,
+    end: str,
+    reddit_strategy_id: int,
+    validation_min_trades: int = 30,
+    test_min_trades: int = 30,
+    save: bool = True,
+    source: str = "crypto",
+) -> dict | None:
+    """Runs an already-built candidate (translated from a Reddit post by
+    reddit_scan.extract_strategy, not found by random search) through the exact same
+    validation suite run_experiment() gives a discovery finalist -- chronological split,
+    walk-forward, cost stress, parameter perturbation, robustness score. The only
+    difference is there's no search step and no "discovery set" the rule was found on;
+    the first chronological slice is evaluated the same way anyway so robustness_score's
+    degradation check (test retained vs. discovery) still has a baseline to compare
+    against, on equal footing with how discovery candidates are scored.
+
+    Returns None (doesn't save) if the rule doesn't clear the trade-count bar on
+    validation or test data -- a Reddit-sourced rule gets no free pass research
+    candidates don't get either.
+    """
+    if source == "stocks":
+        raw = get_stock_candles(symbol, interval, start, end)
+    else:
+        raw = get_candles(symbol, interval, start, end)
+
+    feats = build_features(raw)
+    discovery_df, val_df, test_df = chronological_split(feats)
+    config = BacktestConfig()
+    # clauses arrives as plain dicts (reddit_scan.extract_strategy's JSON output) --
+    # Candidate.signal() and db.save_experiment's clause serialization both require
+    # real Clause dataclass instances, not dicts.
+    clause_objs = [Clause(**c) if isinstance(c, dict) else c for c in clauses]
+    cand_obj = Candidate(clauses=clause_objs)
+
+    discovery_stats, _ = evaluate_candidate(discovery_df, cand_obj, config)
+    val_stats, val_trades = evaluate_candidate(val_df, cand_obj, config)
+    if val_stats.n_trades < validation_min_trades or val_stats.expectancy_r <= 0:
+        return None
+
+    test_stats, test_trades = evaluate_candidate(test_df, cand_obj, config)
+    if test_stats.n_trades < test_min_trades:
+        return None
+
+    rule = cand_obj.describe()
+    wf = walk_forward(feats, cand_obj, n_windows=6, config=config)
+    mc = monte_carlo(test_trades["r_multiple"]) if len(test_trades) else None
+    cs = cost_stress(test_df, cand_obj, config)
+    pert = parameter_perturbation(discovery_df, cand_obj, config)
+    stability = parameter_stability_score(pert)
+    score = robustness_score(discovery_stats, val_stats, test_stats, wf, stability, cs, test_trades)
+
+    experiment_id = None
+    if save:
+        experiment_id = db.save_experiment(
+            symbol=symbol, interval=interval, start_date=start, end_date=end,
+            rule=rule, clauses=clause_objs,
+            discovery_stats=discovery_stats.as_dict(),
+            validation_stats=val_stats.as_dict(),
+            test_stats=test_stats.as_dict(),
+            walk_forward=wf, monte_carlo=mc, cost_stress=cs,
+            parameter_stability={"score": stability, "perturbations": pert.to_dict(orient="records")},
+            robustness_score=score,
+            source=source,
+            origin="reddit",
+            reddit_strategy_id=reddit_strategy_id,
+        )
+        db.save_trades(experiment_id, val_trades, "validation")
+        db.save_trades(experiment_id, test_trades, "test")
+
+    return {
+        "experiment_id": experiment_id,
+        "symbol": symbol,
+        "interval": interval,
+        "rule": rule,
+        "validation_stats": val_stats,
+        "test_stats": test_stats,
+        "robustness_score": score,
+    }
 
 
 def is_pass(finalist: dict) -> bool:

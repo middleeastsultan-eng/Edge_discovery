@@ -3,15 +3,16 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FlaskConical, Activity, Radio, Circle } from "lucide-react";
+import { FlaskConical, Activity, Radio, Users, Circle } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import type { AgentSettings } from "@/lib/supabase";
 import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, BORDER, STATUS_GOOD, STATUS_CRITICAL, ACCENT, tint } from "@/lib/theme";
 
 const LINKS = [
-  { href: "/", label: "Experiments", icon: FlaskConical },
+  { href: "/experiments", label: "Experiments", icon: FlaskConical },
   { href: "/research", label: "Research Health", icon: Activity },
   { href: "/live", label: "Live Signals", icon: Radio },
+  { href: "/community", label: "Community", icon: Users },
 ];
 
 export function Sidebar({ settings }: { settings: AgentSettings | null }) {
@@ -25,7 +26,7 @@ export function Sidebar({ settings }: { settings: AgentSettings | null }) {
       <Link href="/" className="flex items-center gap-2.5 px-5 py-5">
         <Image src="/logo-mark.png" alt="" width={28} height={28} className="rounded-full shrink-0" priority />
         <span className="text-sm font-semibold tracking-wide" style={{ color: TEXT_PRIMARY }}>
-          TRADING LAB
+          EDGE DISCOVERY
         </span>
       </Link>
 

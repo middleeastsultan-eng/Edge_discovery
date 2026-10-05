@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Trading Lab",
+  title: "Edge Discovery",
   description: "Systematic strategy research: discovery, validation, walk-forward and Monte Carlo results.",
 };
 

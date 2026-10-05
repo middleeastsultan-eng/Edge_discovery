@@ -99,6 +99,8 @@ export type Experiment = {
     };
     red_flags: string[];
   } | null;
+  origin: "discovery" | "reddit";
+  reddit_strategy_id: number | null;
 };
 
 export type ResearchRun = {
@@ -159,6 +161,24 @@ export type ForwardSignalAlert = {
 export type PaperAccount = {
   equity: number;
   watermark: string | null;
+};
+
+// A Reddit post that cleared the score/keyword bar -- see trading_lab/reddit_scan.py.
+// extraction_status is "pending" | "testable" | "not_testable" | "error".
+export type RedditStrategy = {
+  id: number;
+  reddit_post_id: string;
+  subreddit: string;
+  title: string;
+  body: string;
+  author: string | null;
+  score: number;
+  num_comments: number;
+  url: string;
+  created_utc: string;
+  fetched_at: string;
+  extraction_status: "pending" | "testable" | "not_testable" | "error";
+  extraction_notes: string | null;
 };
 
 export type PaperTrade = {

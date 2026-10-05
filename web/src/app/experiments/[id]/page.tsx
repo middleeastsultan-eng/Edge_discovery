@@ -57,7 +57,7 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
     <div className="space-y-10">
       <div>
         <Link
-          href="/"
+          href="/experiments"
           className="inline-flex items-center gap-1.5 text-sm transition-colors hover:text-[var(--tl-text-secondary)]"
           style={{ color: TEXT_MUTED }}
         >

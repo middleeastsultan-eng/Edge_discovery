@@ -87,6 +87,33 @@ UPDATE experiments SET source = 'stocks' WHERE source IS NULL AND symbol IN ('SP
 -- that actually surface to a human get one) -- not every candidate deserves an API call.
 ALTER TABLE experiments ADD COLUMN IF NOT EXISTS plain_english TEXT;
 
+-- One row per Reddit post that cleared the score/keyword bar, whether or not an LLM
+-- could translate it into this system's rule language. extraction_notes holds the
+-- LLM's reasoning either way -- "not testable" is a recorded, visible decision, not a
+-- silently dropped post (see trading_lab/reddit_scan.py).
+CREATE TABLE IF NOT EXISTS reddit_strategies (
+    id SERIAL PRIMARY KEY,
+    reddit_post_id TEXT NOT NULL UNIQUE,
+    subreddit TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    author TEXT,
+    score INTEGER NOT NULL,
+    num_comments INTEGER NOT NULL,
+    url TEXT NOT NULL,
+    created_utc TIMESTAMPTZ NOT NULL,
+    fetched_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    extraction_status TEXT NOT NULL DEFAULT 'pending',
+    extraction_notes TEXT
+);
+
+-- Distinct from `source` (crypto/stocks data source): tags which experiments came from
+-- the random-search discovery funnel vs. a translated Reddit post, and traces a
+-- Reddit-derived experiment back to the post that inspired it -- same traceability
+-- research_run_id already gives discovery experiments back to their run.
+ALTER TABLE experiments ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT 'discovery';
+ALTER TABLE experiments ADD COLUMN IF NOT EXISTS reddit_strategy_id INTEGER REFERENCES reddit_strategies(id) ON DELETE SET NULL;
+
 CREATE TABLE IF NOT EXISTS experiment_trades (
     id SERIAL PRIMARY KEY,
     experiment_id INTEGER NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
@@ -181,6 +208,7 @@ ALTER TABLE forward_validation ENABLE ROW LEVEL SECURITY;
 ALTER TABLE forward_signal_alerts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE paper_account ENABLE ROW LEVEL SECURITY;
 ALTER TABLE paper_trades ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reddit_strategies ENABLE ROW LEVEL SECURITY;
 """
 
 
@@ -278,6 +306,8 @@ def save_experiment(
     research_run_id: int | None = None,
     information_test: dict | None = None,
     source: str | None = None,
+    origin: str = "discovery",
+    reddit_strategy_id: int | None = None,
 ) -> int:
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -286,8 +316,9 @@ def save_experiment(
                 INSERT INTO experiments
                     (symbol, interval, start_date, end_date, rule, clauses,
                      discovery_stats, validation_stats, test_stats, walk_forward, monte_carlo,
-                     cost_stress, parameter_stability, robustness_score, research_run_id, information_test, source)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     cost_stress, parameter_stability, robustness_score, research_run_id, information_test, source,
+                     origin, reddit_strategy_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
@@ -304,6 +335,8 @@ def save_experiment(
                     research_run_id,
                     json.dumps(information_test) if information_test else None,
                     source,
+                    origin,
+                    reddit_strategy_id,
                 ),
             )
             experiment_id = cur.fetchone()[0]
@@ -601,4 +634,58 @@ def get_unprocessed_forward_trades(experiment_id: int, after) -> pd.DataFrame:
             ORDER BY entry_time
             """,
             conn, params={"experiment_id": experiment_id, "after": after},
+        )
+
+
+def reddit_post_seen(reddit_post_id: str) -> bool:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM reddit_strategies WHERE reddit_post_id = %s", (reddit_post_id,))
+            return cur.fetchone() is not None
+
+
+def save_reddit_strategy(reddit_post_id: str, subreddit: str, title: str, body: str,
+                          author: str | None, score: int, num_comments: int, url: str,
+                          created_utc) -> int:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO reddit_strategies
+                    (reddit_post_id, subreddit, title, body, author, score, num_comments, url, created_utc)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (reddit_post_id) DO NOTHING
+                RETURNING id
+                """,
+                (reddit_post_id, subreddit, title, body, author, score, num_comments, url, created_utc),
+            )
+            row = cur.fetchone()
+        conn.commit()
+    return row[0] if row else None
+
+
+def update_reddit_strategy_extraction(reddit_strategy_id: int, status: str, notes: str | None) -> None:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE reddit_strategies SET extraction_status = %s, extraction_notes = %s WHERE id = %s",
+                (status, notes, reddit_strategy_id),
+            )
+        conn.commit()
+
+
+def list_reddit_strategies(limit: int = 100) -> pd.DataFrame:
+    with get_connection() as conn:
+        return pd.read_sql(
+            "SELECT * FROM reddit_strategies ORDER BY fetched_at DESC LIMIT %(limit)s",
+            conn, params={"limit": limit},
+        )
+
+
+def get_experiments_for_reddit_strategy(reddit_strategy_id: int) -> pd.DataFrame:
+    with get_connection() as conn:
+        return pd.read_sql(
+            "SELECT id, symbol, interval, robustness_score FROM experiments "
+            "WHERE reddit_strategy_id = %(id)s ORDER BY (robustness_score->>'total')::float DESC NULLS LAST",
+            conn, params={"id": reddit_strategy_id},
         )

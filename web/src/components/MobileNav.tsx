@@ -7,9 +7,10 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { TEXT_PRIMARY, TEXT_SECONDARY, BORDER } from "@/lib/theme";
 
 const LINKS = [
-  { href: "/", label: "Experiments" },
+  { href: "/experiments", label: "Experiments" },
   { href: "/research", label: "Research Health" },
   { href: "/live", label: "Live Signals" },
+  { href: "/community", label: "Community" },
 ];
 
 export function MobileNav() {
@@ -23,7 +24,7 @@ export function MobileNav() {
       <Link href="/" className="inline-flex items-center gap-2">
         <Image src="/logo-mark.png" alt="" width={24} height={24} className="rounded-full shrink-0" priority />
         <span className="text-sm font-semibold tracking-wide" style={{ color: TEXT_PRIMARY }}>
-          TRADING LAB
+          EDGE DISCOVERY
         </span>
       </Link>
       <nav className="flex items-center gap-4 text-sm">
