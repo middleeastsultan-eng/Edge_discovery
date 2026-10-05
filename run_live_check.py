@@ -1,7 +1,7 @@
 """One symbol/interval/source combo, one live-signal check. Mirrors run_scheduled.py's
 shape (meant to be invoked by a GitHub Actions matrix, independent and stateless) but
 runs much more often -- it doesn't search for new patterns, it only re-checks patterns
-already proven by the research pipeline (robustness_score.total == 100) against fresh
+already scored well by the research pipeline (robustness_score.total >= TRACKING_MIN_SCORE) against fresh
 market data.
 
 Sends Telegram ONLY when a pattern that has ALSO proven itself in forward/paper trading
@@ -32,11 +32,11 @@ def main():
 
     print(f"[{datetime.now(timezone.utc).isoformat()}] [{args.source}] {args.symbol} {args.interval} live check")
 
-    proven = db.get_proven_experiments(
-        live.PROVEN_MIN_SCORE, symbol=args.symbol, interval=args.interval, source=args.source,
+    tracked = db.get_proven_experiments(
+        live.TRACKING_MIN_SCORE, symbol=args.symbol, interval=args.interval, source=args.source,
     )
-    if proven.empty:
-        print(f"  no proven (robustness={live.PROVEN_MIN_SCORE}) patterns for this combo yet -- nothing to check.")
+    if tracked.empty:
+        print(f"  no patterns above robustness={live.TRACKING_MIN_SCORE} for this combo yet -- nothing to check.")
         return
 
     try:
@@ -50,7 +50,7 @@ def main():
         return
 
     alerts_sent = 0
-    for _, row in proven.iterrows():
+    for _, row in tracked.iterrows():
         experiment_row = row.to_dict()
         experiment_id = int(experiment_row["id"])
 
@@ -81,7 +81,7 @@ def main():
             else:
                 print(f"    -> already alerted for signal bar {result.bar_time}, skipping")
 
-    print(f"\nDone. {len(proven)} proven pattern(s) checked, {alerts_sent} alert(s) sent.")
+    print(f"\nDone. {len(tracked)} tracked pattern(s) checked, {alerts_sent} alert(s) sent.")
 
 
 if __name__ == "__main__":

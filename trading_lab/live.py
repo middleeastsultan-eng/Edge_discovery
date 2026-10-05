@@ -1,11 +1,15 @@
-"""Forward/paper-trading verification for patterns the backtest pipeline already
-scored as "proven" (robustness_score.total == 100).
+"""Forward/paper-trading verification for patterns the backtest pipeline scored well
+enough to deserve a real-world shot (robustness_score.total >= TRACKING_MIN_SCORE).
 
-A 100 backtest score is a statement about the past. This module is the forward-looking
-half of the loop: it re-evaluates the SAME frozen rule against fresh, real market data as
-it arrives, tracks the trades it would actually have taken, and only recommends a pattern
-for live alerting once its forward performance has itself held up -- not once, but on
-every check, so a pattern that degrades later loses its "promoted" status automatically.
+A high backtest score is a statement about the past -- it decides who gets a shot at
+being tested live, not who gets trusted. This module is the forward-looking half of the
+loop: it re-evaluates the SAME frozen rule against fresh, real market data as it arrives,
+tracks the trades it would actually have taken, and only recommends a pattern for live
+alerting once its forward performance has itself held up -- not once, but on every check,
+so a pattern that degrades later loses its "promoted" status automatically. A pattern
+that backtested merely well (not perfectly) earns exactly as much trust as one that
+backtested perfectly, once both have proven themselves against real data -- trust is
+earned live, not inherited from the backtest.
 
 Nothing here re-fits or tunes a rule. A clause that passed discovery+validation+test is
 frozen; this only asks "does reality still agree with it."
@@ -37,8 +41,11 @@ MIN_FORWARD_TRADES = 20
 # robustness_score already applies to test-vs-discovery, applied here to live-vs-test.
 RETENTION_MIN = 0.5
 
-# How "proven" is defined for entry into forward tracking at all.
-PROVEN_MIN_SCORE = 100.0
+# Backtest score threshold to enter forward tracking at all -- "Strong" per validate.py's
+# score_label bands. Deliberately below a perfect 100: a pattern that backtested well but
+# not perfectly still deserves a real-world shot, since live performance (not backtest
+# score) is what actually earns a pattern the right to alert.
+TRACKING_MIN_SCORE = 80.0
 
 _LOOKBACK_BARS = 3000
 _MIN_LOOKBACK_DAYS = 10

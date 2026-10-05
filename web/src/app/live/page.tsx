@@ -11,9 +11,10 @@ import {
 
 export const dynamic = "force-dynamic";
 
-// Must match trading_lab/live.py's PROVEN_MIN_SCORE -- a pattern only enters forward
-// tracking at all once its backtest robustness_score.total reaches this bar.
-const PROVEN_MIN_SCORE = 100;
+// Must match trading_lab/live.py's TRACKING_MIN_SCORE -- a pattern only enters forward
+// tracking at all once its backtest robustness_score.total reaches this bar. Alerting
+// is a separate, higher bar earned by live performance (see ForwardStatusBadge below).
+const TRACKING_MIN_SCORE = 80;
 
 type ForwardStatus = "promoted" | "tracking" | "not checked yet";
 
@@ -58,9 +59,9 @@ export default async function LivePage() {
 
   const forwardByExperiment = new Map((fvData ?? []).map((fv) => [fv.experiment_id, fv as ForwardValidation]));
 
-  const proven = experiments.filter((e) => (e.robustness_score?.total ?? 0) >= PROVEN_MIN_SCORE);
-  const promotedCount = proven.filter((e) => forwardByExperiment.get(e.id)?.status === "promoted").length;
-  const trackingCount = proven.length - promotedCount;
+  const tracked = experiments.filter((e) => (e.robustness_score?.total ?? 0) >= TRACKING_MIN_SCORE);
+  const promotedCount = tracked.filter((e) => forwardByExperiment.get(e.id)?.status === "promoted").length;
+  const trackingCount = tracked.length - promotedCount;
 
   const alerts = (alertData ?? []) as ForwardSignalAlert[];
 
@@ -72,15 +73,15 @@ export default async function LivePage() {
           Live Signals
         </h1>
         <p className="text-sm max-w-2xl" style={{ color: TEXT_MUTED }}>
-          A {PROVEN_MIN_SCORE}/100 robustness score only proves a pattern worked historically. These are the
-          patterns that cleared that bar and are now being continuously re-checked against real market data
-          as it arrives -- Telegram only fires once a pattern&apos;s forward/paper performance holds up too,
-          not from backtest alone.
+          A backtest score only proves a pattern worked historically. Anything scoring {TRACKING_MIN_SCORE}+
+          gets a real-world shot: continuously re-checked against live market data, with trust earned by
+          live performance, not inherited from the backtest -- Telegram only fires once a pattern&apos;s
+          forward/paper trades have themselves proven positive, regardless of how high its backtest score was.
         </p>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatTile label={`Proven (score = ${PROVEN_MIN_SCORE})`} value={String(proven.length)} icon={ShieldCheck} />
+        <StatTile label={`Tracked (score ≥ ${TRACKING_MIN_SCORE})`} value={String(tracked.length)} icon={ShieldCheck} />
         <StatTile
           label="Promoted (live alerts active)"
           value={String(promotedCount)}
@@ -91,13 +92,13 @@ export default async function LivePage() {
         <StatTile label="Alerts sent (recent)" value={String(alerts.length)} icon={Bell} />
       </div>
 
-      {proven.length === 0 ? (
+      {tracked.length === 0 ? (
         <div
           className="rounded-2xl px-4 py-10 text-center text-sm"
           style={{ border: `1px solid ${BORDER}`, backgroundColor: SURFACE, color: TEXT_MUTED }}
         >
-          No pattern has reached a {PROVEN_MIN_SCORE}/100 robustness score yet -- that bar is intentionally
-          strict. Once one does, it will appear here and forward tracking begins automatically.
+          No pattern has reached a {TRACKING_MIN_SCORE}/100 robustness score yet. Once one does, it will
+          appear here and forward tracking begins automatically.
         </div>
       ) : (
         <div className="overflow-x-auto rounded-2xl shadow-sm" style={{ border: `1px solid ${BORDER}` }}>
@@ -117,7 +118,7 @@ export default async function LivePage() {
               </tr>
             </thead>
             <tbody>
-              {proven.map((exp) => {
+              {tracked.map((exp) => {
                 const fv = forwardByExperiment.get(exp.id);
                 const stats = fv?.forward_stats;
                 const status: ForwardStatus = fv ? fv.status : "not checked yet";
