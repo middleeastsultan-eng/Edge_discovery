@@ -20,6 +20,13 @@ def print_finalist(f: dict) -> None:
     print(f"{f['symbol']} {f['interval']}  —  {f['rule']}")
     print(f"{'=' * 70}")
 
+    info = f.get("information_test")
+    if info:
+        print(f"\nLevel-1 information test (forward {info['horizon']}-bar return, condition vs baseline):")
+        print(f"  conditional: mean={info['conditional_mean_return']:.4%}  P(positive)={info['conditional_p_positive']:.1%}  n={info['n_condition']}")
+        print(f"  baseline:    mean={info['baseline_mean_return']:.4%}  P(positive)={info['baseline_p_positive']:.1%}  n={info['n_baseline']}")
+        print(f"  p-value: {info['p_value']:.4g} (FDR-corrected across the batch)")
+
     print(f"\nDiscovery:  {f['discovery_stats'].as_dict()}")
     print(f"Validation: {f['validation_stats'].as_dict()}")
     print(f"Test:       {f['test_stats'].as_dict()}")

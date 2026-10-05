@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 
 from .backtest import BacktestConfig, run_backtest
+from .information import benjamini_hochberg, test_information
 from .metrics import compute_stats
 
 # feature -> (low_quantile, high_quantile) bounds to sample thresholds from,
@@ -85,19 +86,49 @@ def search(
     min_trades: int = 30,
     backtest_config: BacktestConfig = BacktestConfig(),
     seed: int = 42,
+    information_horizon: int = 10,
+    information_fdr: float = 0.10,
 ) -> pd.DataFrame:
-    """Randomly generate and backtest n_candidates hypotheses on df (the discovery set only).
+    """Randomly generate n_candidates hypotheses on df (the discovery set only).
+
+    Two gates, in order:
+      1. Information gate -- does the condition actually shift the forward-return
+         distribution versus baseline (Mann-Whitney U), surviving Benjamini-Hochberg
+         FDR correction across the whole batch? This is the "is there a real
+         relationship here" question, independent of whether it's monetizable.
+      2. Backtest gate -- for candidates that pass, run the actual strategy
+         (entry/stop/target/fees) and keep those with at least min_trades trades.
 
     Returns a DataFrame of results sorted by score, one row per candidate that
-    produced at least min_trades trades.
+    cleared both gates. Each row's "information" column carries the Level-1 stats.
     """
     rng = np.random.default_rng(seed)
-    results = []
+    candidates = []
+    signals = []
+    info_results = []
 
     for _ in range(n_candidates):
         candidate = sample_candidate(df, rng)
         signal = candidate.signal(df)
         if signal.sum() < min_trades:
+            continue
+
+        info = test_information(df, signal, horizon=information_horizon, min_observations=min_trades)
+        if info is None:
+            continue
+
+        candidates.append(candidate)
+        signals.append(signal)
+        info_results.append(info)
+
+    if not candidates:
+        return pd.DataFrame()
+
+    survives = benjamini_hochberg([r["p_value"] for r in info_results], fdr=information_fdr)
+
+    results = []
+    for candidate, signal, info, keep in zip(candidates, signals, info_results, survives):
+        if not keep:
             continue
 
         trades = run_backtest(df, signal, backtest_config)
@@ -111,6 +142,7 @@ def search(
             "rule": candidate.describe(),
             "clauses": candidate.clauses,
             "score": score,
+            "information": info,
             **stats.as_dict(),
         })
 

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ElementType, ReactNode } from "react";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Dices, ShieldCheck, FlaskConical, LineChart, History, Dice5, DollarSign, SlidersHorizontal } from "lucide-react";
+import { ArrowLeft, Dices, ShieldCheck, FlaskConical, LineChart, History, Dice5, DollarSign, SlidersHorizontal, Microscope } from "lucide-react";
 import { supabase, type Experiment, type ExperimentTrade } from "@/lib/supabase";
 import { verdict } from "@/lib/evaluate";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -86,6 +86,33 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
       {exp.robustness_score && (
         <section className="rounded-xl p-4 shadow-sm" style={cardStyle}>
           <RobustnessScore score={exp.robustness_score} />
+        </section>
+      )}
+
+      {exp.information_test && (
+        <section className="rounded-xl p-4 shadow-sm" style={cardStyle}>
+          <SectionHeading icon={Microscope}>
+            Level-1 information test
+            <span className="font-normal normal-case" style={{ color: TEXT_MUTED, opacity: 0.8 }}>
+              (does the condition shift the next-{exp.information_test.horizon}-bar return distribution?)
+            </span>
+          </SectionHeading>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatTile
+              label="Conditional mean return"
+              value={`${(exp.information_test.conditional_mean_return * 100).toFixed(3)}%`}
+              tone={exp.information_test.conditional_mean_return > exp.information_test.baseline_mean_return ? "good" : "bad"}
+            />
+            <StatTile label="Baseline mean return" value={`${(exp.information_test.baseline_mean_return * 100).toFixed(3)}%`} />
+            <StatTile label="P(positive) | condition" value={formatPct(exp.information_test.conditional_p_positive)} />
+            <StatTile label="P(positive) | baseline" value={formatPct(exp.information_test.baseline_p_positive)} />
+          </div>
+          <p className="text-xs mt-3" style={{ color: TEXT_MUTED }}>
+            p = {exp.information_test.p_value < 0.0001 ? exp.information_test.p_value.toExponential(2) : exp.information_test.p_value.toFixed(4)}
+            {" "}(Mann-Whitney U, Benjamini-Hochberg FDR-corrected across the batch tested that run) · n={exp.information_test.n_condition} condition / {exp.information_test.n_baseline} baseline.
+            This asks whether the condition carries real information about future returns, before any stop-loss,
+            take-profit, or fees are applied — a different question from whether it&apos;s profitable as a strategy.
+          </p>
         </section>
       )}
 

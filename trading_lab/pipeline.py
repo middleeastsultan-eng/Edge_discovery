@@ -153,6 +153,7 @@ def run_experiment(
                 parameter_stability={"score": stability, "perturbations": pert.to_dict(orient="records")},
                 robustness_score=score,
                 research_run_id=research_run_id,
+                information_test=row.get("information"),
             )
             db.save_trades(experiment_id, val_trades, "validation")
             db.save_trades(experiment_id, test_trades, "test")
@@ -162,6 +163,7 @@ def run_experiment(
             "symbol": symbol,
             "interval": interval,
             "rule": row["rule"],
+            "information_test": row.get("information"),
             "discovery_stats": discovery_stats,
             "validation_stats": val_stats,
             "validation_trades": val_trades,

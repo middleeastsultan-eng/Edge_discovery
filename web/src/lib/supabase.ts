@@ -50,6 +50,16 @@ export type Experiment = {
     max_drawdown_r_p95: number;
     prob_final_negative: number;
   } | null;
+  information_test: {
+    horizon: number;
+    n_condition: number;
+    n_baseline: number;
+    conditional_mean_return: number;
+    baseline_mean_return: number;
+    conditional_p_positive: number;
+    baseline_p_positive: number;
+    p_value: number;
+  } | null;
   cost_stress: Array<{
     cost_multiplier: number;
   } & TradeStats> | null;

@@ -43,13 +43,15 @@ CREATE TABLE IF NOT EXISTS experiments (
     cost_stress JSONB,
     parameter_stability JSONB,
     robustness_score JSONB,
-    research_run_id INTEGER REFERENCES research_runs(id) ON DELETE SET NULL
+    research_run_id INTEGER REFERENCES research_runs(id) ON DELETE SET NULL,
+    information_test JSONB
 );
 
 ALTER TABLE experiments ADD COLUMN IF NOT EXISTS cost_stress JSONB;
 ALTER TABLE experiments ADD COLUMN IF NOT EXISTS parameter_stability JSONB;
 ALTER TABLE experiments ADD COLUMN IF NOT EXISTS robustness_score JSONB;
 ALTER TABLE experiments ADD COLUMN IF NOT EXISTS research_run_id INTEGER REFERENCES research_runs(id) ON DELETE SET NULL;
+ALTER TABLE experiments ADD COLUMN IF NOT EXISTS information_test JSONB;
 
 CREATE TABLE IF NOT EXISTS experiment_trades (
     id SERIAL PRIMARY KEY,
@@ -139,6 +141,7 @@ def save_experiment(
     parameter_stability: dict | None = None,
     robustness_score: dict | None = None,
     research_run_id: int | None = None,
+    information_test: dict | None = None,
 ) -> int:
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -147,8 +150,8 @@ def save_experiment(
                 INSERT INTO experiments
                     (symbol, interval, start_date, end_date, rule, clauses,
                      discovery_stats, validation_stats, test_stats, walk_forward, monte_carlo,
-                     cost_stress, parameter_stability, robustness_score, research_run_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     cost_stress, parameter_stability, robustness_score, research_run_id, information_test)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
@@ -163,6 +166,7 @@ def save_experiment(
                     json.dumps(parameter_stability) if parameter_stability else None,
                     json.dumps(robustness_score) if robustness_score else None,
                     research_run_id,
+                    json.dumps(information_test) if information_test else None,
                 ),
             )
             experiment_id = cur.fetchone()[0]
