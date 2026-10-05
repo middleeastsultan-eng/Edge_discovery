@@ -1,6 +1,6 @@
 import { AlertTriangle, Gauge } from "lucide-react";
 import type { Experiment } from "@/lib/supabase";
-import { STATUS_GOOD, STATUS_WARNING, STATUS_CRITICAL, STATUS_SERIOUS, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED } from "@/lib/theme";
+import { STATUS_GOOD, STATUS_WARNING, STATUS_CRITICAL, STATUS_SERIOUS, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, tint } from "@/lib/theme";
 
 const COMPONENT_LABELS: Record<string, string> = {
   expectancy: "Expectancy",
@@ -45,7 +45,7 @@ export function RobustnessScore({ score }: { score: NonNullable<Experiment["robu
             Robustness score
             <span
               className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
-              style={{ color: LABEL_COLOR[score.label], backgroundColor: `${LABEL_COLOR[score.label]}1a` }}
+              style={{ color: LABEL_COLOR[score.label], backgroundColor: tint(LABEL_COLOR[score.label], 10) }}
             >
               {score.label}
             </span>
@@ -68,7 +68,7 @@ export function RobustnessScore({ score }: { score: NonNullable<Experiment["robu
                   {value}
                 </span>
               </div>
-              <div className="h-1.5 rounded-full bg-black/10 overflow-hidden">
+              <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: tint(TEXT_MUTED, 20) }}>
                 <div
                   className="h-full rounded-full"
                   style={{ width: `${Math.max(0, Math.min(100, value))}%`, backgroundColor: color }}
@@ -82,7 +82,7 @@ export function RobustnessScore({ score }: { score: NonNullable<Experiment["robu
       {score.red_flags.length > 0 && (
         <div
           className="rounded-lg px-3.5 py-3"
-          style={{ border: `1px solid ${STATUS_CRITICAL}4d`, backgroundColor: `${STATUS_CRITICAL}0f` }}
+          style={{ border: `1px solid ${tint(STATUS_CRITICAL, 30)}`, backgroundColor: tint(STATUS_CRITICAL, 6) }}
         >
           <div className="flex items-center gap-1.5 text-xs font-medium mb-2" style={{ color: STATUS_SERIOUS }}>
             <AlertTriangle size={13} />

@@ -1,5 +1,5 @@
 import { VERDICT_LABEL, type Verdict } from "@/lib/evaluate";
-import { STATUS_GOOD, STATUS_CRITICAL, TEXT_MUTED } from "@/lib/theme";
+import { STATUS_GOOD, STATUS_CRITICAL, TEXT_MUTED, tint } from "@/lib/theme";
 
 const STYLES: Record<Verdict, { color: string; icon: string }> = {
   pass: { color: STATUS_GOOD, icon: "✓" },
@@ -12,7 +12,7 @@ export function StatusBadge({ verdict }: { verdict: Verdict }) {
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium"
-      style={{ color, borderColor: `${color}40`, backgroundColor: `${color}1a` }}
+      style={{ color, borderColor: tint(color, 25), backgroundColor: tint(color, 10) }}
     >
       <span aria-hidden>{icon}</span>
       {VERDICT_LABEL[verdict]}

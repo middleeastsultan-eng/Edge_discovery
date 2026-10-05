@@ -10,7 +10,7 @@ import { StatsGrid } from "@/components/StatsGrid";
 import { EquityCurve } from "@/components/EquityCurve";
 import { RobustnessScore } from "@/components/RobustnessScore";
 import { formatDateTime, formatNum, formatPct, formatR } from "@/lib/format";
-import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, STATUS_GOOD, STATUS_CRITICAL, CHART_BLUE } from "@/lib/theme";
+import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, BORDER_SOFT, STATUS_GOOD, STATUS_CRITICAL, CHART_BLUE, TABLE_HEADER_BG, tint } from "@/lib/theme";
 
 export const dynamic = "force-dynamic";
 
@@ -58,13 +58,16 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
       <div>
         <Link
           href="/"
-          className="inline-flex items-center gap-1.5 text-sm transition-colors hover:text-[#52514e]"
+          className="inline-flex items-center gap-1.5 text-sm transition-colors hover:text-[var(--tl-text-secondary)]"
           style={{ color: TEXT_MUTED }}
         >
           <ArrowLeft size={14} />
           All experiments
         </Link>
-        <div className="flex items-start justify-between gap-4 mt-3">
+      </div>
+
+      <section className="rounded-xl p-5 shadow-sm space-y-5" style={cardStyle}>
+        <div className="flex items-start justify-between gap-4">
           <div>
             <h1
               className="text-lg font-semibold leading-snug"
@@ -81,13 +84,13 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
           </div>
           <StatusBadge verdict={v} />
         </div>
-      </div>
 
-      {exp.robustness_score && (
-        <section className="rounded-xl p-4 shadow-sm" style={cardStyle}>
-          <RobustnessScore score={exp.robustness_score} />
-        </section>
-      )}
+        {exp.robustness_score && (
+          <div className="pt-5" style={{ borderTop: `1px solid ${BORDER}` }}>
+            <RobustnessScore score={exp.robustness_score} />
+          </div>
+        )}
+      </section>
 
       {exp.information_test && (
         <section className="rounded-xl p-4 shadow-sm" style={cardStyle}>
@@ -99,7 +102,7 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
             {exp.information_test.label && (
               <span
                 className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
-                style={{ color: STATUS_GOOD, backgroundColor: `${STATUS_GOOD}1a` }}
+                style={{ color: STATUS_GOOD, backgroundColor: tint(STATUS_GOOD, 10) }}
               >
                 {exp.information_test.label.replace(/_/g, " ")}
               </span>
@@ -187,7 +190,7 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
               <thead>
                 <tr
                   className="border-b text-left text-xs"
-                  style={{ borderColor: BORDER, backgroundColor: "rgba(11,11,11,0.02)", color: TEXT_MUTED }}
+                  style={{ borderColor: BORDER, backgroundColor: TABLE_HEADER_BG, color: TEXT_MUTED }}
                 >
                   <th className="px-4 py-3 font-medium">Window</th>
                   <th className="px-4 py-3 font-medium">Period</th>
@@ -201,8 +204,8 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
                 {exp.walk_forward.map((w) => (
                   <tr
                     key={w.window}
-                    className="border-b last:border-0 hover:bg-black/[0.02]"
-                    style={{ borderColor: "rgba(11,11,11,0.06)" }}
+                    className="border-b last:border-0 hover:bg-[var(--tl-text-primary)]/[0.03]"
+                    style={{ borderColor: BORDER_SOFT }}
                   >
                     <td className="px-4 py-3" style={{ color: TEXT_SECONDARY }}>
                       {w.window}
@@ -266,7 +269,7 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
               <thead>
                 <tr
                   className="border-b text-left text-xs"
-                  style={{ borderColor: BORDER, backgroundColor: "rgba(11,11,11,0.02)", color: TEXT_MUTED }}
+                  style={{ borderColor: BORDER, backgroundColor: TABLE_HEADER_BG, color: TEXT_MUTED }}
                 >
                   <th className="px-4 py-3 font-medium">Feature</th>
                   <th className="px-4 py-3 font-medium text-right">Nudge</th>
@@ -279,8 +282,8 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
                 {exp.parameter_stability.perturbations.map((p, i) => (
                   <tr
                     key={i}
-                    className="border-b last:border-0 hover:bg-black/[0.02]"
-                    style={{ borderColor: "rgba(11,11,11,0.06)" }}
+                    className="border-b last:border-0 hover:bg-[var(--tl-text-primary)]/[0.03]"
+                    style={{ borderColor: BORDER_SOFT }}
                   >
                     <td className="px-4 py-3" style={{ color: TEXT_SECONDARY, fontFamily: "var(--font-geist-mono)" }}>
                       {p.feature}

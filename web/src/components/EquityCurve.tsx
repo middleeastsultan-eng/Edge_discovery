@@ -13,7 +13,7 @@ import {
 } from "recharts";
 import type { ExperimentTrade } from "@/lib/supabase";
 import { formatR } from "@/lib/format";
-import { CHART_BLUE, CHART_RED, TEXT_MUTED, GRIDLINE, BASELINE, SURFACE, BORDER, STATUS_GOOD } from "@/lib/theme";
+import { CHART_BLUE, CHART_RED, TEXT_MUTED, TEXT_PRIMARY, GRIDLINE, BASELINE, SURFACE, BORDER, STATUS_GOOD } from "@/lib/theme";
 
 type Point = {
   index: number;
@@ -59,7 +59,7 @@ function TooltipContent({ active, payload }: { active?: boolean; payload?: Array
       </div>
       <div className="flex items-center gap-2">
         <span className="h-0.5 w-3" style={{ backgroundColor: CHART_BLUE }} />
-        <span className="font-medium tabular-nums" style={{ color: "#0b0b0b" }}>
+        <span className="font-medium tabular-nums" style={{ color: TEXT_PRIMARY }}>
           {formatR(p.cumulative)}
         </span>
         <span style={{ color: TEXT_MUTED }}>cumulative</span>

@@ -2,7 +2,7 @@
 
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from "recharts";
 import type { CumulativePoint } from "@/lib/researchHealth";
-import { CHART_BLUE, TEXT_MUTED, TEXT_PRIMARY, SURFACE, BORDER } from "@/lib/theme";
+import { CHART_BLUE, CHART_GREEN, CHART_AMBER, CHART_TEAL, TEXT_MUTED, TEXT_PRIMARY, SURFACE, BORDER } from "@/lib/theme";
 
 function MiniTrend({ data, dataKey, label, color }: { data: CumulativePoint[]; dataKey: keyof CumulativePoint; label: string; color: string }) {
   const latest = data.length ? (data[data.length - 1][dataKey] as number) : 0;
@@ -40,9 +40,9 @@ export function CumulativeTrends({ data }: { data: CumulativePoint[] }) {
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       <MiniTrend data={data} dataKey="hypotheses" label="Cumulative hypotheses tested" color={CHART_BLUE} />
-      <MiniTrend data={data} dataKey="level1" label="Cumulative Level-1 signals" color="#008300" />
-      <MiniTrend data={data} dataKey="validation" label="Cumulative validation survivors" color="#eda100" />
-      <MiniTrend data={data} dataKey="finalTest" label="Cumulative final-test passes" color="#1baf7a" />
+      <MiniTrend data={data} dataKey="level1" label="Cumulative Level-1 signals" color={CHART_GREEN} />
+      <MiniTrend data={data} dataKey="validation" label="Cumulative validation survivors" color={CHART_AMBER} />
+      <MiniTrend data={data} dataKey="finalTest" label="Cumulative final-test passes" color={CHART_TEAL} />
     </div>
   );
 }

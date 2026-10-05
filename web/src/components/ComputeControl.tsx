@@ -2,7 +2,7 @@
 
 import { updateComputeSettings } from "@/app/research/actions";
 import type { AgentSettings } from "@/lib/supabase";
-import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, STATUS_GOOD, STATUS_CRITICAL, CHART_BLUE } from "@/lib/theme";
+import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, STATUS_GOOD, STATUS_CRITICAL, CHART_BLUE, tint } from "@/lib/theme";
 
 export function ComputeControl({ settings }: { settings: AgentSettings }) {
   return (
@@ -15,7 +15,7 @@ export function ComputeControl({ settings }: { settings: AgentSettings }) {
           className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
           style={{
             color: settings.paused ? STATUS_CRITICAL : STATUS_GOOD,
-            backgroundColor: settings.paused ? `${STATUS_CRITICAL}1a` : `${STATUS_GOOD}1a`,
+            backgroundColor: settings.paused ? tint(STATUS_CRITICAL, 10) : tint(STATUS_GOOD, 10),
           }}
         >
           {settings.paused ? "Paused" : `Running — ${settings.max_workers} worker(s)`}

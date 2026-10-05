@@ -81,6 +81,26 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* Trading Lab dataviz palette -- light mode (validated, see dataviz skill) */
+  --tl-page: #f9f9f7;
+  --tl-surface: #fcfcfb;
+  --tl-border: rgba(11, 11, 11, 0.1);
+  --tl-border-soft: rgba(11, 11, 11, 0.06);
+  --tl-text-primary: #0b0b0b;
+  --tl-text-secondary: #52514e;
+  --tl-text-muted: #898781;
+  --tl-gridline: #e1e0d9;
+  --tl-baseline: #c3c2b7;
+  --tl-status-good: #0ca30c;
+  --tl-status-warning: #fab219;
+  --tl-status-serious: #ec835a;
+  --tl-status-critical: #d03b3b;
+  --tl-chart-blue: #2a78d6;
+  --tl-chart-red: #e34948;
+  --tl-chart-green: #008300;
+  --tl-chart-amber: #eda100;
+  --tl-chart-teal: #1baf7a;
 }
 
 .dark {
@@ -115,6 +135,26 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  /* Trading Lab dataviz palette -- dark mode (same hues, rebalanced for contrast) */
+  --tl-page: #171614;
+  --tl-surface: #1f1e1b;
+  --tl-border: rgba(255, 255, 255, 0.12);
+  --tl-border-soft: rgba(255, 255, 255, 0.08);
+  --tl-text-primary: #f3f2ee;
+  --tl-text-secondary: #b8b6af;
+  --tl-text-muted: #827f78;
+  --tl-gridline: #35332e;
+  --tl-baseline: #4a473f;
+  --tl-status-good: #3ecf3e;
+  --tl-status-warning: #ffc94d;
+  --tl-status-serious: #f2996f;
+  --tl-status-critical: #f0605f;
+  --tl-chart-blue: #5b9ee8;
+  --tl-chart-red: #f0706f;
+  --tl-chart-green: #3ecf3e;
+  --tl-chart-amber: #ffc155;
+  --tl-chart-teal: #35d696;
 }
 
 @layer base {

@@ -4,8 +4,9 @@ import { supabase, type Experiment } from "@/lib/supabase";
 import { verdict } from "@/lib/evaluate";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StatTile } from "@/components/StatTile";
+import { StackedBar } from "@/components/StackedBar";
 import { formatDate, formatNum, formatPct, formatR } from "@/lib/format";
-import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, STATUS_GOOD, STATUS_CRITICAL } from "@/lib/theme";
+import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, BORDER_SOFT, STATUS_GOOD, STATUS_CRITICAL, TABLE_HEADER_BG, tint } from "@/lib/theme";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export default async function Home() {
     return (
       <div
         className="rounded-lg px-4 py-3 text-sm"
-        style={{ border: `1px solid ${STATUS_CRITICAL}40`, backgroundColor: `${STATUS_CRITICAL}1a`, color: STATUS_CRITICAL }}
+        style={{ border: `1px solid ${tint(STATUS_CRITICAL, 25)}`, backgroundColor: tint(STATUS_CRITICAL, 10), color: STATUS_CRITICAL }}
       >
         Failed to load experiments: {error.message}
       </div>
@@ -29,6 +30,8 @@ export default async function Home() {
 
   const experiments = (data ?? []) as Experiment[];
   const passing = experiments.filter((e) => verdict(e) === "pass").length;
+  const failing = experiments.filter((e) => verdict(e) === "fail").length;
+  const insufficient = experiments.filter((e) => verdict(e) === "insufficient").length;
 
   return (
     <div className="space-y-8">
@@ -63,6 +66,21 @@ export default async function Home() {
         />
       </div>
 
+      {experiments.length > 0 && (
+        <div className="rounded-xl p-4 shadow-sm" style={{ backgroundColor: SURFACE, border: `1px solid ${BORDER}` }}>
+          <h2 className="text-xs mb-3" style={{ color: TEXT_MUTED }}>
+            Verdict distribution
+          </h2>
+          <StackedBar
+            segments={[
+              { value: passing, color: STATUS_GOOD, label: "Survived validation" },
+              { value: failing, color: STATUS_CRITICAL, label: "Failed validation" },
+              { value: insufficient, color: TEXT_MUTED, label: "Not enough trades" },
+            ]}
+          />
+        </div>
+      )}
+
       {experiments.length === 0 ? (
         <div
           className="rounded-xl px-4 py-10 text-center text-sm"
@@ -77,7 +95,7 @@ export default async function Home() {
             <thead>
               <tr
                 className="border-b text-left text-xs"
-                style={{ borderColor: BORDER, backgroundColor: "rgba(11,11,11,0.02)", color: TEXT_MUTED }}
+                style={{ borderColor: BORDER, backgroundColor: TABLE_HEADER_BG, color: TEXT_MUTED }}
               >
                 <th className="px-4 py-3 font-medium">Date</th>
                 <th className="px-4 py-3 font-medium">Symbol</th>
@@ -96,8 +114,8 @@ export default async function Home() {
                 return (
                   <tr
                     key={exp.id}
-                    className="group border-b last:border-0 transition-colors hover:bg-black/[0.02]"
-                    style={{ borderColor: "rgba(11,11,11,0.06)" }}
+                    className="group border-b last:border-0 transition-colors hover:bg-[var(--tl-text-primary)]/[0.03]"
+                    style={{ borderColor: BORDER_SOFT }}
                   >
                     <td className="px-4 py-3 whitespace-nowrap" style={{ color: TEXT_SECONDARY }}>
                       {formatDate(exp.created_at)}
@@ -111,7 +129,7 @@ export default async function Home() {
                     <td className="px-4 py-3 max-w-md truncate" style={{ color: TEXT_SECONDARY }} title={exp.rule}>
                       <Link
                         href={`/experiments/${exp.id}`}
-                        className="transition-colors hover:text-[#2a78d6]"
+                        className="transition-colors hover:text-[var(--tl-chart-blue)]"
                         style={{ fontFamily: "var(--font-geist-mono)" }}
                       >
                         {exp.rule}

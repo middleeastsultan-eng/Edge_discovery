@@ -9,15 +9,13 @@ import {
 } from "@/lib/researchHealth";
 import { CumulativeTrends } from "@/components/CumulativeTrends";
 import { ComputeControl } from "@/components/ComputeControl";
-import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, STATUS_GOOD } from "@/lib/theme";
+import { FunnelChart } from "@/components/FunnelChart";
+import { SurvivalTrend } from "@/components/SurvivalTrend";
+import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, BORDER_SOFT, STATUS_GOOD, STATUS_CRITICAL, TABLE_HEADER_BG, CHART_BLUE, CHART_TEAL, tint } from "@/lib/theme";
 
 export const dynamic = "force-dynamic";
 
 const cardStyle = { backgroundColor: SURFACE, border: `1px solid ${BORDER}` };
-
-function formatPct(x: number): string {
-  return `${(x * 100).toFixed(1)}%`;
-}
 
 export default async function ResearchHealth() {
   const [{ data: runsData, error: runsError }, { data: expData, error: expError }, { data: settingsData }] = await Promise.all([
@@ -28,7 +26,7 @@ export default async function ResearchHealth() {
 
   if (runsError || expError) {
     return (
-      <div className="rounded-lg px-4 py-3 text-sm" style={{ color: "#d03b3b" }}>
+      <div className="rounded-lg px-4 py-3 text-sm" style={{ color: STATUS_CRITICAL }}>
         Failed to load research health data: {runsError?.message ?? expError?.message}
       </div>
     );
@@ -66,37 +64,7 @@ export default async function ResearchHealth() {
         <h2 className="text-sm font-medium mb-3" style={{ color: TEXT_SECONDARY }}>
           Funnel totals
         </h2>
-        <div className="overflow-x-auto rounded-lg" style={{ border: `1px solid ${BORDER}` }}>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-xs" style={{ borderColor: BORDER, backgroundColor: "rgba(11,11,11,0.02)", color: TEXT_MUTED }}>
-                <th className="px-4 py-3 font-medium">Stage</th>
-                <th className="px-4 py-3 font-medium text-right">Count</th>
-                <th className="px-4 py-3 font-medium text-right">% of previous stage</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stages.map((s) => (
-                <tr key={s.label} className="border-b last:border-0" style={{ borderColor: "rgba(11,11,11,0.06)" }}>
-                  <td className="px-4 py-3" style={{ color: TEXT_SECONDARY }}>
-                    {s.label}
-                    {s.note && (
-                      <span className="ml-1.5 text-[11px]" style={{ color: TEXT_MUTED, opacity: 0.8 }}>
-                        ({s.note})
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums font-medium" style={{ color: TEXT_PRIMARY }}>
-                    {s.count.toLocaleString()}
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_MUTED }}>
-                    {s.pctOfPrevious === null ? "—" : formatPct(s.pctOfPrevious)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <FunnelChart stages={stages} />
         {conversionX && (
           <p className="text-xs mt-3" style={{ color: TEXT_MUTED }}>
             Observed conversion rate: <span style={{ color: TEXT_SECONDARY }}>1 final-test pass per {conversionX.toLocaleString()} hypotheses tested.</span>{" "}
@@ -118,36 +86,7 @@ export default async function ResearchHealth() {
         <h2 className="text-sm font-medium mb-3" style={{ color: TEXT_SECONDARY }}>
           Survival rates by week
         </h2>
-        {weekly.length === 0 ? (
-          <div className="text-sm" style={{ color: TEXT_MUTED }}>No research runs yet.</div>
-        ) : (
-          <div className="overflow-x-auto rounded-lg" style={{ border: `1px solid ${BORDER}` }}>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs" style={{ borderColor: BORDER, backgroundColor: "rgba(11,11,11,0.02)", color: TEXT_MUTED }}>
-                  <th className="px-4 py-3 font-medium">Week of</th>
-                  <th className="px-4 py-3 font-medium text-right">Hypotheses</th>
-                  <th className="px-4 py-3 font-medium text-right">Level 1</th>
-                  <th className="px-4 py-3 font-medium text-right">Validation</th>
-                  <th className="px-4 py-3 font-medium text-right">Robustness</th>
-                  <th className="px-4 py-3 font-medium text-right">Final test</th>
-                </tr>
-              </thead>
-              <tbody>
-                {weekly.map((w) => (
-                  <tr key={w.weekStart} className="border-b last:border-0" style={{ borderColor: "rgba(11,11,11,0.06)" }}>
-                    <td className="px-4 py-3 whitespace-nowrap" style={{ color: TEXT_SECONDARY }}>{w.weekStart}</td>
-                    <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>{w.hypotheses.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>{w.level1Pct === null ? "—" : formatPct(w.level1Pct)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>{formatPct(w.validationPct)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>{formatPct(w.robustPct)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>{formatPct(w.finalTestPct)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <SurvivalTrend data={weekly} />
         <p className="text-xs mt-3" style={{ color: TEXT_MUTED }}>
           A sudden drop can mean feature-space exhaustion, a data/code bug, overly aggressive filtering,
           or a genuine regime change — this table flags that something changed, not what changed.
@@ -165,9 +104,10 @@ export default async function ResearchHealth() {
           <div className="overflow-x-auto rounded-lg" style={{ border: `1px solid ${BORDER}` }}>
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b text-left text-xs" style={{ borderColor: BORDER, backgroundColor: "rgba(11,11,11,0.02)", color: TEXT_MUTED }}>
+                <tr className="border-b text-left text-xs" style={{ borderColor: BORDER, backgroundColor: TABLE_HEADER_BG, color: TEXT_MUTED }}>
                   <th className="px-4 py-3 font-medium">Market</th>
                   <th className="px-4 py-3 font-medium">TF</th>
+                  <th className="px-4 py-3 font-medium">Funnel (hypotheses → validation)</th>
                   <th className="px-4 py-3 font-medium text-right">Hypotheses</th>
                   <th className="px-4 py-3 font-medium text-right">Level 1</th>
                   <th className="px-4 py-3 font-medium text-right">Validation</th>
@@ -176,19 +116,34 @@ export default async function ResearchHealth() {
                 </tr>
               </thead>
               <tbody>
-                {assetMatrix.map((a) => (
-                  <tr key={`${a.symbol}-${a.interval}`} className="border-b last:border-0" style={{ borderColor: "rgba(11,11,11,0.06)" }}>
-                    <td className="px-4 py-3 font-medium" style={{ color: TEXT_PRIMARY }}>{a.symbol}</td>
-                    <td className="px-4 py-3" style={{ color: TEXT_MUTED }}>{a.interval}</td>
-                    <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>{a.hypotheses.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>{a.level1 === null ? "—" : a.level1.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>{a.validation.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>{a.robust.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right tabular-nums font-medium" style={{ color: a.finalTest > 0 ? STATUS_GOOD : TEXT_MUTED }}>
-                      {a.finalTest.toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
+                {assetMatrix.map((a) => {
+                  const maxHyp = Math.max(...assetMatrix.map((x) => x.hypotheses), 1);
+                  return (
+                    <tr key={`${a.symbol}-${a.interval}`} className="border-b last:border-0" style={{ borderColor: BORDER_SOFT }}>
+                      <td className="px-4 py-3 font-medium" style={{ color: TEXT_PRIMARY }}>{a.symbol}</td>
+                      <td className="px-4 py-3" style={{ color: TEXT_MUTED }}>{a.interval}</td>
+                      <td className="px-4 py-3">
+                        <div className="relative h-2 w-28 rounded-full overflow-hidden" style={{ backgroundColor: tint(TEXT_MUTED, 12) }}>
+                          <div
+                            className="absolute inset-y-0 left-0 rounded-full"
+                            style={{ width: `${(a.hypotheses / maxHyp) * 100}%`, backgroundColor: tint(CHART_BLUE, 40) }}
+                          />
+                          <div
+                            className="absolute inset-y-0 left-0 rounded-full"
+                            style={{ width: `${(a.validation / maxHyp) * 100}%`, backgroundColor: CHART_TEAL }}
+                          />
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>{a.hypotheses.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>{a.level1 === null ? "—" : a.level1.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>{a.validation.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>{a.robust.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right tabular-nums font-medium" style={{ color: a.finalTest > 0 ? STATUS_GOOD : TEXT_MUTED }}>
+                        {a.finalTest.toLocaleString()}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

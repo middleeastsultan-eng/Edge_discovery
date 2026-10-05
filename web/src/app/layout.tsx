@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import Image from "next/image";
 import { Geist, Geist_Mono } from "next/font/google";
+import { NavLinks } from "@/components/NavLinks";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -17,32 +21,54 @@ export const metadata: Metadata = {
   description: "Systematic strategy research: discovery, validation, walk-forward and Monte Carlo results.",
 };
 
+// Runs before paint so the stored/preferred theme applies with no flash.
+const NO_FLASH_SCRIPT = `
+(function () {
+  try {
+    var stored = localStorage.getItem("theme");
+    var dark = stored ? stored === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.classList.toggle("dark", dark);
+  } catch (e) {}
+})();
+`;
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-[#f9f9f7] text-[#0b0b0b]">
-        <header className="border-b border-black/10 px-6 py-3.5 bg-[#fcfcfb]">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: NO_FLASH_SCRIPT }} />
+      </head>
+      <body
+        className="min-h-full flex flex-col"
+        style={{ backgroundColor: "var(--tl-page)", color: "var(--tl-text-primary)" }}
+      >
+        <header
+          className="sticky top-0 z-10 border-b px-6 py-3.5 backdrop-blur-sm"
+          style={{ borderColor: "var(--tl-border)", backgroundColor: "color-mix(in srgb, var(--tl-surface) 92%, transparent)" }}
+        >
           <div className="flex items-center justify-between">
-            <a href="/" className="inline-flex items-center gap-2.5">
-              <span
-                className="flex h-6 w-6 items-center justify-center rounded-md text-xs font-bold text-white"
-                style={{ backgroundColor: "#2a78d6" }}
-              >
-                T
+            <Link href="/" className="inline-flex items-center gap-2.5">
+              <Image
+                src="/logo-mark.png"
+                alt=""
+                width={28}
+                height={28}
+                className="rounded-full shrink-0"
+                priority
+              />
+              <span className="text-sm font-semibold tracking-wide" style={{ color: "var(--tl-text-primary)" }}>
+                TRADING LAB
               </span>
-              <span className="text-sm font-semibold tracking-wide text-[#0b0b0b]">TRADING LAB</span>
-            </a>
-            <nav className="flex items-center gap-5 text-sm">
-              <a href="/" className="text-[#52514e] hover:text-[#0b0b0b] transition-colors">
-                Experiments
-              </a>
-              <a href="/research" className="text-[#52514e] hover:text-[#0b0b0b] transition-colors">
-                Research Health
-              </a>
-            </nav>
+            </Link>
+            <div className="flex items-center gap-4">
+              <NavLinks />
+              <span className="h-4 w-px" style={{ backgroundColor: "var(--tl-border)" }} />
+              <ThemeToggle />
+            </div>
           </div>
         </header>
         <main className="flex-1 px-6 py-8 max-w-6xl w-full mx-auto">{children}</main>

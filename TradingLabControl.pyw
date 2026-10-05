@@ -23,6 +23,7 @@ from tkinter import ttk
 
 PROJECT_ROOT = Path(__file__).parent
 SCRIPT_PATH = PROJECT_ROOT / "run_overnight.py"
+ICON_PATH = PROJECT_ROOT / "assets" / "app_icon.ico"
 DASHBOARD_URL = "https://edgediscovery.vercel.app/research"
 
 
@@ -32,6 +33,11 @@ class ControlPanel:
         self.root.title("Trading Lab -- Research Control")
         self.root.geometry("720x480")
         self.root.minsize(560, 360)
+        if ICON_PATH.exists():
+            try:
+                self.root.iconbitmap(default=str(ICON_PATH))
+            except tk.TclError:
+                pass
 
         self.process: subprocess.Popen | None = None
         self.log_queue: queue.Queue[str] = queue.Queue()

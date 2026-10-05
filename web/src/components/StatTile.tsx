@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { STATUS_GOOD, STATUS_CRITICAL, CHART_BLUE, TEXT_PRIMARY, TEXT_MUTED, SURFACE, BORDER } from "@/lib/theme";
+import { STATUS_GOOD, STATUS_CRITICAL, CHART_BLUE, TEXT_PRIMARY, TEXT_MUTED, SURFACE, BORDER, tint } from "@/lib/theme";
 
 const TONE_COLOR: Record<"neutral" | "good" | "bad", string> = {
   neutral: CHART_BLUE,
@@ -33,7 +33,7 @@ export function StatTile({
         {Icon && (
           <div
             className="flex h-6 w-6 items-center justify-center rounded-md"
-            style={{ backgroundColor: `${accent}1a`, color: accent }}
+            style={{ backgroundColor: tint(accent, 10), color: accent }}
           >
             <Icon size={14} strokeWidth={2.25} />
           </div>
