@@ -1,9 +1,10 @@
 import { VERDICT_LABEL, type Verdict } from "@/lib/evaluate";
+import { STATUS_GOOD, STATUS_CRITICAL, TEXT_MUTED } from "@/lib/theme";
 
 const STYLES: Record<Verdict, { color: string; icon: string }> = {
-  pass: { color: "#0ca30c", icon: "✓" },
-  fail: { color: "#d03b3b", icon: "✕" },
-  insufficient: { color: "#898781", icon: "·" },
+  pass: { color: STATUS_GOOD, icon: "✓" },
+  fail: { color: STATUS_CRITICAL, icon: "✕" },
+  insufficient: { color: TEXT_MUTED, icon: "·" },
 };
 
 export function StatusBadge({ verdict }: { verdict: Verdict }) {

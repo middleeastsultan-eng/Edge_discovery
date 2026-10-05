@@ -13,12 +13,7 @@ import {
 } from "recharts";
 import type { ExperimentTrade } from "@/lib/supabase";
 import { formatR } from "@/lib/format";
-
-const BLUE = "#3987e5";
-const RED = "#e66767";
-const MUTED = "#898781";
-const GRID = "#2c2c2a";
-const SURFACE = "#1a1a19";
+import { CHART_BLUE, CHART_RED, TEXT_MUTED, GRIDLINE, BASELINE, SURFACE, BORDER, STATUS_GOOD } from "@/lib/theme";
 
 type Point = {
   index: number;
@@ -56,23 +51,25 @@ function TooltipContent({ active, payload }: { active?: boolean; payload?: Array
   const p = payload[0].payload;
   return (
     <div
-      className="rounded-md border px-3 py-2 text-xs"
-      style={{ backgroundColor: SURFACE, borderColor: "rgba(255,255,255,0.1)" }}
+      className="rounded-md border px-3 py-2 text-xs shadow-sm"
+      style={{ backgroundColor: SURFACE, borderColor: BORDER }}
     >
-      <div className="text-[#898781] mb-1">
+      <div className="mb-1" style={{ color: TEXT_MUTED }}>
         Trade #{p.index} · {new Date(p.entry_time).toLocaleDateString()} · {p.split}
       </div>
       <div className="flex items-center gap-2">
-        <span className="h-0.5 w-3" style={{ backgroundColor: BLUE }} />
-        <span className="text-white font-medium tabular-nums">{formatR(p.cumulative)}</span>
-        <span className="text-[#898781]">cumulative</span>
+        <span className="h-0.5 w-3" style={{ backgroundColor: CHART_BLUE }} />
+        <span className="font-medium tabular-nums" style={{ color: "#0b0b0b" }}>
+          {formatR(p.cumulative)}
+        </span>
+        <span style={{ color: TEXT_MUTED }}>cumulative</span>
       </div>
       <div className="flex items-center gap-2 mt-0.5">
-        <span className="h-0.5 w-3" style={{ backgroundColor: p.r_multiple >= 0 ? "#0ca30c" : RED }} />
-        <span className="tabular-nums" style={{ color: p.r_multiple >= 0 ? "#0ca30c" : RED }}>
+        <span className="h-0.5 w-3" style={{ backgroundColor: p.r_multiple >= 0 ? STATUS_GOOD : CHART_RED }} />
+        <span className="tabular-nums" style={{ color: p.r_multiple >= 0 ? STATUS_GOOD : CHART_RED }}>
           {formatR(p.r_multiple)}
         </span>
-        <span className="text-[#898781]">this trade ({p.exit_reason})</span>
+        <span style={{ color: TEXT_MUTED }}>this trade ({p.exit_reason})</span>
       </div>
     </div>
   );
@@ -80,7 +77,7 @@ function TooltipContent({ active, payload }: { active?: boolean; payload?: Array
 
 export function EquityCurve({ trades }: { trades: ExperimentTrade[] }) {
   if (trades.length === 0) {
-    return <div className="text-sm text-[#898781]">No trades to chart.</div>;
+    return <div className="text-sm" style={{ color: TEXT_MUTED }}>No trades to chart.</div>;
   }
 
   const data = buildSeries(trades);
@@ -89,65 +86,69 @@ export function EquityCurve({ trades }: { trades: ExperimentTrade[] }) {
   return (
     <div className="space-y-1">
       <div>
-        <div className="text-xs text-[#898781] mb-2">Cumulative R by trade (validation + test, chronological)</div>
+        <div className="text-xs mb-2" style={{ color: TEXT_MUTED }}>
+          Cumulative R by trade (validation + test, chronological)
+        </div>
         <ResponsiveContainer width="100%" height={220}>
           <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-            <CartesianGrid stroke={GRID} strokeDasharray="0" vertical={false} />
+            <CartesianGrid stroke={GRIDLINE} strokeDasharray="0" vertical={false} />
             <XAxis
               dataKey="index"
-              tick={{ fill: MUTED, fontSize: 11 }}
-              axisLine={{ stroke: "#383835" }}
+              tick={{ fill: TEXT_MUTED, fontSize: 11 }}
+              axisLine={{ stroke: BASELINE }}
               tickLine={false}
             />
             <YAxis
-              tick={{ fill: MUTED, fontSize: 11 }}
-              axisLine={{ stroke: "#383835" }}
+              tick={{ fill: TEXT_MUTED, fontSize: 11 }}
+              axisLine={{ stroke: BASELINE }}
               tickLine={false}
               tickFormatter={(v) => `${v}R`}
               width={40}
             />
-            <Tooltip content={<TooltipContent />} cursor={{ stroke: MUTED, strokeWidth: 1 }} />
-            <ReferenceLine y={0} stroke="#383835" strokeWidth={1} />
+            <Tooltip content={<TooltipContent />} cursor={{ stroke: TEXT_MUTED, strokeWidth: 1 }} />
+            <ReferenceLine y={0} stroke={BASELINE} strokeWidth={1} />
             {firstTestIndex && (
               <ReferenceLine
                 x={firstTestIndex}
-                stroke={MUTED}
+                stroke={TEXT_MUTED}
                 strokeDasharray="2 2"
-                label={{ value: "test →", position: "insideTopRight", fill: MUTED, fontSize: 11 }}
+                label={{ value: "test →", position: "insideTopRight", fill: TEXT_MUTED, fontSize: 11 }}
               />
             )}
             <Line
               type="monotone"
               dataKey="cumulative"
-              stroke={BLUE}
+              stroke={CHART_BLUE}
               strokeWidth={2}
               dot={false}
-              activeDot={{ r: 4, fill: BLUE, stroke: SURFACE, strokeWidth: 2 }}
+              activeDot={{ r: 4, fill: CHART_BLUE, stroke: SURFACE, strokeWidth: 2 }}
             />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
 
       <div>
-        <div className="text-xs text-[#898781] mb-2 mt-4">Drawdown (R below running peak)</div>
+        <div className="text-xs mb-2 mt-4" style={{ color: TEXT_MUTED }}>
+          Drawdown (R below running peak)
+        </div>
         <ResponsiveContainer width="100%" height={120}>
           <ComposedChart data={data} margin={{ top: 0, right: 8, left: 0, bottom: 0 }}>
-            <CartesianGrid stroke={GRID} strokeDasharray="0" vertical={false} />
+            <CartesianGrid stroke={GRIDLINE} strokeDasharray="0" vertical={false} />
             <XAxis dataKey="index" hide />
             <YAxis
-              tick={{ fill: MUTED, fontSize: 11 }}
-              axisLine={{ stroke: "#383835" }}
+              tick={{ fill: TEXT_MUTED, fontSize: 11 }}
+              axisLine={{ stroke: BASELINE }}
               tickLine={false}
               tickFormatter={(v) => `${v}R`}
               width={40}
             />
-            <Tooltip content={<TooltipContent />} cursor={{ stroke: MUTED, strokeWidth: 1 }} />
+            <Tooltip content={<TooltipContent />} cursor={{ stroke: TEXT_MUTED, strokeWidth: 1 }} />
             <Area
               type="monotone"
               dataKey="drawdown"
-              stroke={RED}
+              stroke={CHART_RED}
               strokeWidth={2}
-              fill={RED}
+              fill={CHART_RED}
               fillOpacity={0.1}
             />
           </ComposedChart>

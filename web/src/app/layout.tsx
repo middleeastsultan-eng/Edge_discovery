@@ -23,16 +23,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-[#0d0d0d] text-neutral-100">
-        <header className="border-b border-white/10 px-6 py-3.5">
+      <body className="min-h-full flex flex-col bg-[#f9f9f7] text-[#0b0b0b]">
+        <header className="border-b border-black/10 px-6 py-3.5 bg-[#fcfcfb]">
           <a href="/" className="inline-flex items-center gap-2.5">
             <span
               className="flex h-6 w-6 items-center justify-center rounded-md text-xs font-bold text-white"
-              style={{ backgroundColor: "#3987e5" }}
+              style={{ backgroundColor: "#2a78d6" }}
             >
               T
             </span>
-            <span className="text-sm font-semibold tracking-wide text-neutral-200">TRADING LAB</span>
+            <span className="text-sm font-semibold tracking-wide text-[#0b0b0b]">TRADING LAB</span>
           </a>
         </header>
         <main className="flex-1 px-6 py-8 max-w-6xl w-full mx-auto">{children}</main>

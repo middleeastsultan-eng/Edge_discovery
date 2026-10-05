@@ -1,5 +1,6 @@
 import { AlertTriangle, Gauge } from "lucide-react";
 import type { Experiment } from "@/lib/supabase";
+import { STATUS_GOOD, STATUS_WARNING, STATUS_CRITICAL, STATUS_SERIOUS, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED } from "@/lib/theme";
 
 const COMPONENT_LABELS: Record<string, string> = {
   expectancy: "Expectancy",
@@ -13,9 +14,9 @@ const COMPONENT_LABELS: Record<string, string> = {
 };
 
 function scoreColor(value: number): string {
-  if (value >= 70) return "#0ca30c";
-  if (value >= 40) return "#fab219";
-  return "#d03b3b";
+  if (value >= 70) return STATUS_GOOD;
+  if (value >= 40) return STATUS_WARNING;
+  return STATUS_CRITICAL;
 }
 
 export function RobustnessScore({ score }: { score: NonNullable<Experiment["robustness_score"]> }) {
@@ -31,11 +32,11 @@ export function RobustnessScore({ score }: { score: NonNullable<Experiment["robu
           {Math.round(score.total)}
         </div>
         <div>
-          <div className="flex items-center gap-1.5 text-sm font-medium text-white">
+          <div className="flex items-center gap-1.5 text-sm font-medium" style={{ color: TEXT_PRIMARY }}>
             <Gauge size={14} style={{ color: totalColor }} />
             Robustness score
           </div>
-          <p className="text-xs text-[#898781] mt-0.5 max-w-md">
+          <p className="text-xs mt-0.5 max-w-md" style={{ color: TEXT_MUTED }}>
             A summary across the dimensions that separate a real edge from an overfit one.
             It is not proof of future profitability.
           </p>
@@ -48,12 +49,12 @@ export function RobustnessScore({ score }: { score: NonNullable<Experiment["robu
           return (
             <div key={key}>
               <div className="flex items-center justify-between text-xs mb-1">
-                <span className="text-[#c3c2b7]">{COMPONENT_LABELS[key] ?? key}</span>
+                <span style={{ color: TEXT_SECONDARY }}>{COMPONENT_LABELS[key] ?? key}</span>
                 <span className="tabular-nums font-medium" style={{ color }}>
                   {value}
                 </span>
               </div>
-              <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+              <div className="h-1.5 rounded-full bg-black/10 overflow-hidden">
                 <div
                   className="h-full rounded-full"
                   style={{ width: `${Math.max(0, Math.min(100, value))}%`, backgroundColor: color }}
@@ -65,15 +66,18 @@ export function RobustnessScore({ score }: { score: NonNullable<Experiment["robu
       </div>
 
       {score.red_flags.length > 0 && (
-        <div className="rounded-lg border border-[#d03b3b]/30 bg-[#d03b3b]/[0.06] px-3.5 py-3">
-          <div className="flex items-center gap-1.5 text-xs font-medium text-[#ec835a] mb-2">
+        <div
+          className="rounded-lg px-3.5 py-3"
+          style={{ border: `1px solid ${STATUS_CRITICAL}4d`, backgroundColor: `${STATUS_CRITICAL}0f` }}
+        >
+          <div className="flex items-center gap-1.5 text-xs font-medium mb-2" style={{ color: STATUS_SERIOUS }}>
             <AlertTriangle size={13} />
             Red flags
           </div>
           <ul className="space-y-1.5">
             {score.red_flags.map((flag, i) => (
-              <li key={i} className="text-xs text-[#c3c2b7] pl-4 relative">
-                <span className="absolute left-0 text-[#ec835a]">·</span>
+              <li key={i} className="text-xs pl-4 relative" style={{ color: TEXT_SECONDARY }}>
+                <span className="absolute left-0" style={{ color: STATUS_SERIOUS }}>·</span>
                 {flag}
               </li>
             ))}

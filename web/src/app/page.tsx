@@ -5,6 +5,7 @@ import { verdict } from "@/lib/evaluate";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StatTile } from "@/components/StatTile";
 import { formatDate, formatNum, formatPct, formatR } from "@/lib/format";
+import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, STATUS_GOOD, STATUS_CRITICAL } from "@/lib/theme";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,10 @@ export default async function Home() {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-[#d03b3b]/40 bg-[#d03b3b]/10 px-4 py-3 text-sm text-[#d03b3b]">
+      <div
+        className="rounded-lg px-4 py-3 text-sm"
+        style={{ border: `1px solid ${STATUS_CRITICAL}40`, backgroundColor: `${STATUS_CRITICAL}1a`, color: STATUS_CRITICAL }}
+      >
         Failed to load experiments: {error.message}
       </div>
     );
@@ -29,8 +33,10 @@ export default async function Home() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold mb-1.5 text-white">Experiments</h1>
-        <p className="text-sm text-[#898781] max-w-2xl">
+        <h1 className="text-2xl font-semibold mb-1.5" style={{ color: TEXT_PRIMARY }}>
+          Experiments
+        </h1>
+        <p className="text-sm max-w-2xl" style={{ color: TEXT_MUTED }}>
           Every candidate rule the discovery engine has found and tested, newest first. Discovery-set
           numbers are excluded from the pass/fail verdict on purpose — only validation and out-of-sample
           test performance count.
@@ -58,15 +64,21 @@ export default async function Home() {
       </div>
 
       {experiments.length === 0 ? (
-        <div className="rounded-xl border border-white/10 bg-[#1a1a19] px-4 py-10 text-center text-sm text-[#898781]">
-          No experiments saved yet. Run <code className="text-[#c3c2b7]">python run_research.py</code> to
-          generate the first one.
+        <div
+          className="rounded-xl px-4 py-10 text-center text-sm"
+          style={{ border: `1px solid ${BORDER}`, backgroundColor: SURFACE, color: TEXT_MUTED }}
+        >
+          No experiments saved yet. Run{" "}
+          <code style={{ color: TEXT_SECONDARY }}>python run_research.py</code> to generate the first one.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-white/10 shadow-sm">
+        <div className="overflow-x-auto rounded-xl shadow-sm" style={{ border: `1px solid ${BORDER}` }}>
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-white/10 bg-white/[0.02] text-left text-xs text-[#898781]">
+              <tr
+                className="border-b text-left text-xs"
+                style={{ borderColor: BORDER, backgroundColor: "rgba(11,11,11,0.02)", color: TEXT_MUTED }}
+              >
                 <th className="px-4 py-3 font-medium">Date</th>
                 <th className="px-4 py-3 font-medium">Symbol</th>
                 <th className="px-4 py-3 font-medium">Rule</th>
@@ -82,16 +94,24 @@ export default async function Home() {
                 const valExp = exp.validation_stats?.expectancy_r;
                 const testExp = exp.test_stats?.expectancy_r;
                 return (
-                  <tr key={exp.id} className="group border-b border-white/5 last:border-0 hover:bg-white/[0.035]">
-                    <td className="px-4 py-3 text-[#c3c2b7] whitespace-nowrap">{formatDate(exp.created_at)}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="text-white font-medium">{exp.symbol}</span>{" "}
-                      <span className="text-[#898781]">{exp.interval}</span>
+                  <tr
+                    key={exp.id}
+                    className="group border-b last:border-0 transition-colors hover:bg-black/[0.02]"
+                    style={{ borderColor: "rgba(11,11,11,0.06)" }}
+                  >
+                    <td className="px-4 py-3 whitespace-nowrap" style={{ color: TEXT_SECONDARY }}>
+                      {formatDate(exp.created_at)}
                     </td>
-                    <td className="px-4 py-3 max-w-md truncate text-[#c3c2b7]" title={exp.rule}>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className="font-medium" style={{ color: TEXT_PRIMARY }}>
+                        {exp.symbol}
+                      </span>{" "}
+                      <span style={{ color: TEXT_MUTED }}>{exp.interval}</span>
+                    </td>
+                    <td className="px-4 py-3 max-w-md truncate" style={{ color: TEXT_SECONDARY }} title={exp.rule}>
                       <Link
                         href={`/experiments/${exp.id}`}
-                        className="transition-colors hover:text-[#3987e5]"
+                        className="transition-colors hover:text-[#2a78d6]"
                         style={{ fontFamily: "var(--font-geist-mono)" }}
                       >
                         {exp.rule}
@@ -99,17 +119,17 @@ export default async function Home() {
                     </td>
                     <td
                       className="px-4 py-3 text-right tabular-nums"
-                      style={{ color: valExp == null ? "#898781" : valExp > 0 ? "#0ca30c" : "#d03b3b" }}
+                      style={{ color: valExp == null ? TEXT_MUTED : valExp > 0 ? STATUS_GOOD : STATUS_CRITICAL }}
                     >
                       {formatR(valExp)}
                     </td>
                     <td
                       className="px-4 py-3 text-right tabular-nums"
-                      style={{ color: testExp == null ? "#898781" : testExp > 0 ? "#0ca30c" : "#d03b3b" }}
+                      style={{ color: testExp == null ? TEXT_MUTED : testExp > 0 ? STATUS_GOOD : STATUS_CRITICAL }}
                     >
                       {formatR(testExp)}
                     </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-[#c3c2b7]">
+                    <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>
                       {formatNum(exp.test_stats?.profit_factor)}
                     </td>
                     <td className="px-4 py-3">
@@ -119,7 +139,8 @@ export default async function Home() {
                       <Link href={`/experiments/${exp.id}`}>
                         <ArrowRight
                           size={15}
-                          className="text-[#898781] opacity-0 transition-opacity group-hover:opacity-100"
+                          className="opacity-0 transition-opacity group-hover:opacity-100"
+                          style={{ color: TEXT_MUTED }}
                         />
                       </Link>
                     </td>

@@ -1,11 +1,12 @@
 import { ListOrdered, Target, TrendingUp, Scale, Activity, TrendingDown, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { StatTile } from "./StatTile";
 import { formatNum, formatR, formatPct } from "@/lib/format";
+import { TEXT_MUTED } from "@/lib/theme";
 import type { TradeStats } from "@/lib/supabase";
 
 export function StatsGrid({ stats }: { stats: TradeStats | null | undefined }) {
   if (!stats) {
-    return <div className="text-sm text-[#898781]">No trades in this split.</div>;
+    return <div className="text-sm" style={{ color: TEXT_MUTED }}>No trades in this split.</div>;
   }
 
   const expectancyTone = stats.expectancy_r > 0 ? "good" : stats.expectancy_r < 0 ? "bad" : "neutral";

@@ -1,9 +1,10 @@
 import type { LucideIcon } from "lucide-react";
+import { STATUS_GOOD, STATUS_CRITICAL, CHART_BLUE, TEXT_PRIMARY, TEXT_MUTED, SURFACE, BORDER } from "@/lib/theme";
 
 const TONE_COLOR: Record<"neutral" | "good" | "bad", string> = {
-  neutral: "#3987e5",
-  good: "#0ca30c",
-  bad: "#d03b3b",
+  neutral: CHART_BLUE,
+  good: STATUS_GOOD,
+  bad: STATUS_CRITICAL,
 };
 
 export function StatTile({
@@ -18,12 +19,17 @@ export function StatTile({
   icon?: LucideIcon;
 }) {
   const accent = TONE_COLOR[tone];
-  const valueColor = tone === "neutral" ? "#ffffff" : accent;
+  const valueColor = tone === "neutral" ? TEXT_PRIMARY : accent;
 
   return (
-    <div className="group rounded-xl border border-white/10 bg-[#1a1a19] px-4 py-3.5 shadow-sm transition-colors hover:border-white/20">
+    <div
+      className="group rounded-xl px-4 py-3.5 shadow-sm transition-colors"
+      style={{ backgroundColor: SURFACE, border: `1px solid ${BORDER}` }}
+    >
       <div className="flex items-center justify-between mb-2">
-        <div className="text-xs text-[#898781]">{label}</div>
+        <div className="text-xs" style={{ color: TEXT_MUTED }}>
+          {label}
+        </div>
         {Icon && (
           <div
             className="flex h-6 w-6 items-center justify-center rounded-md"
