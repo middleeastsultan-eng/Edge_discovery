@@ -13,6 +13,7 @@ import { BannerBackground } from "@/components/BannerBackground";
 import { PatternChart } from "@/components/PatternChart";
 import { ForwardStatusBadge, type ForwardStatus } from "@/components/ForwardStatusBadge";
 import { getCandles, toPercentChangeSeries } from "@/lib/candles";
+import { detectDivergences, type DivergenceEvent } from "@/lib/structure";
 import { fetchAllRows } from "@/lib/fetchAll";
 import { computeFeatureSeries, evaluateSignal } from "@/lib/indicators";
 import { computeRecurrence } from "@/lib/recurrence";
@@ -100,6 +101,7 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
   let candles: Awaited<ReturnType<typeof getCandles>> = [];
   let qqqSeries: { time: number; value: number }[] = [];
   let spySeries: { time: number; value: number }[] = [];
+  let divergenceEvents: DivergenceEvent[] = [];
   if (tradeList.length > 0 && exp.source) {
     const entryTimes = tradeList.map((t) => new Date(t.entry_time).getTime());
     const exitTimes = tradeList.map((t) => new Date(t.exit_time).getTime());
@@ -118,6 +120,12 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
     ]);
     qqqSeries = toPercentChangeSeries(qqqCandles);
     spySeries = toPercentChangeSeries(spyCandles);
+
+    // Structure divergence: QQQ breaks a recent swing high/low and SPY doesn't confirm
+    // it (or vice versa) around the same time -- a pro trader's observation that this
+    // has preceded a strong directional run. Flagged for tracking/visual confirmation;
+    // not yet wired into discovery/backtesting, which only looks at one symbol at a time.
+    divergenceEvents = detectDivergences(qqqCandles, spyCandles);
   }
 
   // Signal overlay: where the rule's raw boolean condition was historically true, not
@@ -277,7 +285,7 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
         </SectionHeading>
         <PatternChart
           candles={candles} trades={tradeList} signal={signal} latestTradeLevels={latestTradeLevels}
-          qqqSeries={qqqSeries} spySeries={spySeries}
+          qqqSeries={qqqSeries} spySeries={spySeries} divergenceEvents={divergenceEvents}
         />
       </section>
 

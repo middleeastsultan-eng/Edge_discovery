@@ -7,6 +7,7 @@ import {
 } from "lightweight-charts";
 import type { Candle } from "@/lib/candles";
 import type { ExperimentTrade } from "@/lib/supabase";
+import type { DivergenceEvent } from "@/lib/structure";
 import { TEXT_MUTED, TEXT_SECONDARY, CHART_AMBER, CHART_BLUE, CHART_TEAL } from "@/lib/theme";
 
 // Canvas (what lightweight-charts renders to) doesn't understand CSS custom property
@@ -24,7 +25,7 @@ type LatestTradeLevels = { entry: number; stop: number; target: number };
 type PercentPoint = { time: number; value: number };
 
 export function PatternChart({
-  candles, trades, signal, latestTradeLevels, qqqSeries, spySeries,
+  candles, trades, signal, latestTradeLevels, qqqSeries, spySeries, divergenceEvents,
 }: {
   candles: Candle[];
   trades: ExperimentTrade[];
@@ -32,14 +33,17 @@ export function PatternChart({
   latestTradeLevels?: LatestTradeLevels | null;
   qqqSeries?: PercentPoint[];
   spySeries?: PercentPoint[];
+  divergenceEvents?: DivergenceEvent[];
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const [showQQQ, setShowQQQ] = useState(true);
   const [showSPY, setShowSPY] = useState(true);
+  const [showDivergence, setShowDivergence] = useState(true);
 
   const hasQQQ = !!qqqSeries && qqqSeries.length > 0;
   const hasSPY = !!spySeries && spySeries.length > 0;
+  const hasDivergence = !!divergenceEvents && divergenceEvents.length > 0;
 
   useEffect(() => {
     if (!containerRef.current || candles.length === 0) return;
@@ -76,15 +80,29 @@ export function PatternChart({
       }))
     );
 
-    const markers = trades
-      .map((t) => ({
-        time: Math.floor(new Date(t.entry_time).getTime() / 1000) as UTCTimestamp,
-        position: (t.r_multiple > 0 ? "belowBar" : "aboveBar") as "belowBar" | "aboveBar",
-        color: t.r_multiple > 0 ? good : bad,
-        shape: (t.r_multiple > 0 ? "arrowUp" : "arrowDown") as "arrowUp" | "arrowDown",
-        text: `${t.r_multiple > 0 ? "+" : ""}${t.r_multiple.toFixed(2)}R`,
-      }))
-      .sort((a, b) => a.time - b.time);
+    const tradeMarkers = trades.map((t) => ({
+      time: Math.floor(new Date(t.entry_time).getTime() / 1000) as UTCTimestamp,
+      position: (t.r_multiple > 0 ? "belowBar" : "aboveBar") as "belowBar" | "aboveBar",
+      color: t.r_multiple > 0 ? good : bad,
+      shape: (t.r_multiple > 0 ? "arrowUp" : "arrowDown") as "arrowUp" | "arrowDown",
+      text: `${t.r_multiple > 0 ? "+" : ""}${t.r_multiple.toFixed(2)}R`,
+    }));
+
+    // Structure divergence markers: QQQ broke a swing high/low without SPY confirming
+    // it (or vice versa) around the same time -- a circle, distinct from the arrow
+    // trade markers, colored to match whichever index's overlay line led the break.
+    const divergenceMarkers =
+      showDivergence && divergenceEvents
+        ? divergenceEvents.map((e) => ({
+            time: e.time as UTCTimestamp,
+            position: (e.direction === "bullish" ? "belowBar" : "aboveBar") as "belowBar" | "aboveBar",
+            color: e.leader === "QQQ" ? blue : teal,
+            shape: "circle" as const,
+            text: `${e.leader} BOS, ${e.follower} didn't confirm`,
+          }))
+        : [];
+
+    const markers = [...tradeMarkers, ...divergenceMarkers].sort((a, b) => a.time - b.time);
     createSeriesMarkers(series, markers);
 
     if (latestTradeLevels) {
@@ -153,7 +171,7 @@ export function PatternChart({
       window.removeEventListener("resize", handleResize);
       chart.remove();
     };
-  }, [candles, trades, signal, latestTradeLevels, qqqSeries, spySeries, showQQQ, showSPY, hasQQQ, hasSPY]);
+  }, [candles, trades, signal, latestTradeLevels, qqqSeries, spySeries, showQQQ, showSPY, hasQQQ, hasSPY, divergenceEvents, showDivergence]);
 
   if (candles.length === 0) {
     return (
@@ -165,7 +183,7 @@ export function PatternChart({
 
   return (
     <div>
-      {(hasQQQ || hasSPY) && (
+      {(hasQQQ || hasSPY || hasDivergence) && (
         <div className="flex items-center gap-4 mb-2 text-xs" style={{ color: TEXT_SECONDARY }}>
           {hasQQQ && (
             <label className="flex items-center gap-1.5 cursor-pointer select-none">
@@ -179,6 +197,13 @@ export function PatternChart({
               <input type="checkbox" checked={showSPY} onChange={(e) => setShowSPY(e.target.checked)} />
               <span className="inline-block h-0.5 w-3" style={{ backgroundColor: "var(--tl-chart-teal)" }} />
               SPY (S&amp;P 500)
+            </label>
+          )}
+          {hasDivergence && (
+            <label className="flex items-center gap-1.5 cursor-pointer select-none" title="One index broke a recent swing high/low and the other didn't confirm it around the same time">
+              <input type="checkbox" checked={showDivergence} onChange={(e) => setShowDivergence(e.target.checked)} />
+              <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "var(--tl-chart-blue)" }} />
+              Structure divergence ({divergenceEvents!.length})
             </label>
           )}
         </div>
