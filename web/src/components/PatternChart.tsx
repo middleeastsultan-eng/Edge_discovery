@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
-  createChart, CandlestickSeries, HistogramSeries, createSeriesMarkers, ColorType, LineStyle,
-  type IChartApi, type ISeriesApi, type UTCTimestamp,
+  createChart, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers, ColorType, LineStyle,
+  type IChartApi, type ISeriesApi, type SeriesType, type UTCTimestamp,
 } from "lightweight-charts";
 import type { Candle } from "@/lib/candles";
 import type { ExperimentTrade, ClauseJson } from "@/lib/supabase";
@@ -49,6 +49,14 @@ const TIMEFRAMES = [
 
 const FOCUSED_OPACITY = 1;
 const DIMMED_OPACITY = 0.22;
+// Below this many pixels from a series' actual plotted value, the crosshair doesn't
+// count as "on" that series -- hovering empty space between the two keeps both at full
+// opacity instead of always force-picking a "closer" winner everywhere on the chart.
+const HOVER_PROXIMITY_PX = 20;
+// How many of the most recent bars count as "the present" for liveMode's default view
+// (on first load and after an explicit timeframe switch) -- enough to read the recent
+// shape without being zoomed out over the whole fetched window.
+const PRESENT_WINDOW_BARS = 90;
 
 type LatestTradeLevels = { entry: number; stop: number; target: number };
 
@@ -77,13 +85,18 @@ export function PatternChart({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const primarySeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
-  const otherSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const primarySeriesRef = useRef<ISeriesApi<SeriesType> | null>(null);
+  const otherSeriesRef = useRef<ISeriesApi<SeriesType> | null>(null);
   const colorsRef = useRef({ good: "", bad: "", blue: "", teal: "" });
+  // Visible time range captured right before a rebuild (toggle change, timeframe switch,
+  // live auto-refresh) and restored after -- so flipping a checkbox never snaps the user
+  // back out to fitContent(). Only the very first build (this stays null) fits all data.
+  const savedRangeRef = useRef<{ from: UTCTimestamp; to: UTCTimestamp } | null>(null);
 
   const [showOtherIndex, setShowOtherIndex] = useState(true);
   const [showPrimaryIndex, setShowPrimaryIndex] = useState(true);
   const [showDivergence, setShowDivergence] = useState(true);
+  const [chartStyle, setChartStyle] = useState<"candles" | "line">("candles");
   const [activeInterval, setActiveInterval] = useState(interval);
   const [loading, setLoading] = useState(false);
 
@@ -141,6 +154,7 @@ export function PatternChart({
     if (newInterval === activeInterval) return;
     if (!liveMode && (!chartStartIso || !chartEndIso)) return;
     setLoading(true);
+    savedRangeRef.current = null; // a new resolution should land on "now," not wherever the old one was scrolled to
     try {
       const { start, end } = liveMode
         ? windowedRange(newInterval, new Date(Date.now() - 60 * 24 * 60 * 60 * 1000), new Date())
@@ -190,14 +204,19 @@ export function PatternChart({
     const { good, bad, blue, teal } = colorsRef.current;
     const primaryOpacity = focus === "other" ? DIMMED_OPACITY : FOCUSED_OPACITY;
     const otherOpacity = focus === "primary" ? DIMMED_OPACITY : FOCUSED_OPACITY;
-    primarySeriesRef.current?.applyOptions({
-      upColor: withAlpha(good, primaryOpacity), downColor: withAlpha(bad, primaryOpacity),
-      wickUpColor: withAlpha(good, primaryOpacity), wickDownColor: withAlpha(bad, primaryOpacity),
-    });
-    otherSeriesRef.current?.applyOptions({
-      upColor: withAlpha(blue, otherOpacity), downColor: withAlpha(teal, otherOpacity),
-      wickUpColor: withAlpha(blue, otherOpacity), wickDownColor: withAlpha(teal, otherOpacity),
-    });
+    if (chartStyle === "line") {
+      primarySeriesRef.current?.applyOptions({ color: withAlpha(good, primaryOpacity) });
+      otherSeriesRef.current?.applyOptions({ color: withAlpha(blue, otherOpacity) });
+    } else {
+      primarySeriesRef.current?.applyOptions({
+        upColor: withAlpha(good, primaryOpacity), downColor: withAlpha(bad, primaryOpacity),
+        wickUpColor: withAlpha(good, primaryOpacity), wickDownColor: withAlpha(bad, primaryOpacity),
+      });
+      otherSeriesRef.current?.applyOptions({
+        upColor: withAlpha(blue, otherOpacity), downColor: withAlpha(teal, otherOpacity),
+        wickUpColor: withAlpha(blue, otherOpacity), wickDownColor: withAlpha(teal, otherOpacity),
+      });
+    }
 
     if (focus === "primary") {
       primarySeriesRef.current?.setSeriesOrder(1);
@@ -206,7 +225,7 @@ export function PatternChart({
       otherSeriesRef.current?.setSeriesOrder(1);
       primarySeriesRef.current?.setSeriesOrder(0);
     }
-  }, []);
+  }, [chartStyle]);
 
   useEffect(() => {
     if (!containerRef.current || liveCandles.length === 0) return;
@@ -234,33 +253,44 @@ export function PatternChart({
     });
     chartRef.current = chart;
 
-    // Both candle series share PANE 1 so they visually overlap, each on its own price
-    // scale (this symbol on the right, the paired index on the left) since their
-    // absolute price levels aren't comparable -- only their shape/movement is. The
-    // signal strip (added below) takes pane 0.
-    let primarySeries: ISeriesApi<"Candlestick"> | null = null;
+    // Both series share PANE 1 so they visually overlap, each on its own price scale
+    // (this symbol on the right, the paired index on the left) since their absolute
+    // price levels aren't comparable -- only their shape/movement is. The signal strip
+    // (added below) takes pane 0. chartStyle swaps the series TYPE (candles vs. a single
+    // close-price line) but not this layout.
+    let primarySeries: ISeriesApi<SeriesType> | null = null;
     if (showPrimaryIndex) {
-      primarySeries = chart.addSeries(
-        CandlestickSeries,
-        { upColor: good, downColor: bad, borderVisible: false, wickUpColor: good, wickDownColor: bad, priceScaleId: "right" },
-        1,
-      );
-      primarySeries.setData(
-        liveCandles.map((c) => ({ time: c.time as UTCTimestamp, open: c.open, high: c.high, low: c.low, close: c.close }))
-      );
+      if (chartStyle === "line") {
+        const s = chart.addSeries(LineSeries, { color: good, lineWidth: 2, priceScaleId: "right" }, 1);
+        s.setData(liveCandles.map((c) => ({ time: c.time as UTCTimestamp, value: c.close })));
+        primarySeries = s;
+      } else {
+        const s = chart.addSeries(
+          CandlestickSeries,
+          { upColor: good, downColor: bad, borderVisible: false, wickUpColor: good, wickDownColor: bad, priceScaleId: "right" },
+          1,
+        );
+        s.setData(liveCandles.map((c) => ({ time: c.time as UTCTimestamp, open: c.open, high: c.high, low: c.low, close: c.close })));
+        primarySeries = s;
+      }
     }
     primarySeriesRef.current = primarySeries;
 
-    let otherSeries: ISeriesApi<"Candlestick"> | null = null;
+    let otherSeries: ISeriesApi<SeriesType> | null = null;
     if (showOther) {
-      otherSeries = chart.addSeries(
-        CandlestickSeries,
-        { upColor: blue, downColor: teal, borderVisible: false, wickUpColor: blue, wickDownColor: teal, priceScaleId: "left" },
-        1,
-      );
-      otherSeries.setData(
-        liveOtherCandles.map((c) => ({ time: c.time as UTCTimestamp, open: c.open, high: c.high, low: c.low, close: c.close }))
-      );
+      if (chartStyle === "line") {
+        const s = chart.addSeries(LineSeries, { color: blue, lineWidth: 2, priceScaleId: "left" }, 1);
+        s.setData(liveOtherCandles.map((c) => ({ time: c.time as UTCTimestamp, value: c.close })));
+        otherSeries = s;
+      } else {
+        const s = chart.addSeries(
+          CandlestickSeries,
+          { upColor: blue, downColor: teal, borderVisible: false, wickUpColor: blue, wickDownColor: teal, priceScaleId: "left" },
+          1,
+        );
+        s.setData(liveOtherCandles.map((c) => ({ time: c.time as UTCTimestamp, open: c.open, high: c.high, low: c.low, close: c.close })));
+        otherSeries = s;
+      }
     }
     otherSeriesRef.current = otherSeries;
 
@@ -322,28 +352,48 @@ export function PatternChart({
       panes[1].setStretchFactor(0.85);
     }
 
-    // Crosshair-based hover: dims whichever symbol's candles the cursor ISN'T closer
-    // to, by comparing the hovered pixel Y to each series' close price at that bar.
+    // Crosshair-based hover: dims whichever symbol's candles the cursor is actually
+    // close to (within HOVER_PROXIMITY_PX). Hovering empty space between the two --
+    // "in the direction of" the chart but not touching either series -- keeps both at
+    // full opacity instead of always force-picking whichever is numerically nearer.
+    const seriesValueY = (series: ISeriesApi<SeriesType> | null, data: unknown): number | null => {
+      if (!series || !data || typeof data !== "object") return null;
+      if ("close" in data) return series.priceToCoordinate((data as { close: number }).close);
+      if ("value" in data) return series.priceToCoordinate((data as { value: number }).value);
+      return null;
+    };
     const handleCrosshairMove = (param: Parameters<Parameters<IChartApi["subscribeCrosshairMove"]>[0]>[0]) => {
-      if (!param.point || !primarySeries) { applyFocus(null); return; }
+      if (!param.point) { applyFocus(null); return; }
       const primaryData = primarySeries ? param.seriesData.get(primarySeries) : undefined;
       const otherData = otherSeries ? param.seriesData.get(otherSeries) : undefined;
       let primaryDist = Infinity;
       let otherDist = Infinity;
-      if (primaryData && "close" in primaryData) {
-        const y = primarySeries.priceToCoordinate((primaryData as { close: number }).close);
-        if (y !== null) primaryDist = Math.abs(y - param.point.y);
-      }
-      if (otherData && "close" in otherData && otherSeries) {
-        const y = otherSeries.priceToCoordinate((otherData as { close: number }).close);
-        if (y !== null) otherDist = Math.abs(y - param.point.y);
-      }
-      if (primaryDist === Infinity && otherDist === Infinity) { applyFocus(null); return; }
+      const primaryY = seriesValueY(primarySeries, primaryData);
+      if (primaryY !== null) primaryDist = Math.abs(primaryY - param.point.y);
+      const otherY = seriesValueY(otherSeries, otherData);
+      if (otherY !== null) otherDist = Math.abs(otherY - param.point.y);
+      const minDist = Math.min(primaryDist, otherDist);
+      if (minDist === Infinity || minDist > HOVER_PROXIMITY_PX) { applyFocus(null); return; }
       applyFocus(primaryDist <= otherDist ? "primary" : "other");
     };
     if (showOther) chart.subscribeCrosshairMove(handleCrosshairMove);
 
-    chart.timeScale().fitContent();
+    // Preserve whatever the user was looking at across a toggle/style change or a
+    // silent live auto-refresh (savedRangeRef set in the cleanup below). On a true first
+    // mount there's nothing saved yet -- in liveMode, default to "the present" (the most
+    // recent bars) rather than fitContent's zoomed-out view of the whole fetched window;
+    // a timeframe switch clears savedRangeRef up front for the same reason (see
+    // switchTimeframe) so picking a new resolution also lands on "now," not wherever the
+    // old resolution happened to be scrolled to.
+    if (savedRangeRef.current) {
+      chart.timeScale().setVisibleRange(savedRangeRef.current);
+    } else if (liveMode && liveCandles.length > PRESENT_WINDOW_BARS) {
+      const from = liveCandles[liveCandles.length - PRESENT_WINDOW_BARS].time as UTCTimestamp;
+      const to = liveCandles[liveCandles.length - 1].time as UTCTimestamp;
+      chart.timeScale().setVisibleRange({ from, to });
+    } else {
+      chart.timeScale().fitContent();
+    }
 
     const handleResize = () => {
       if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth });
@@ -353,11 +403,14 @@ export function PatternChart({
     return () => {
       window.removeEventListener("resize", handleResize);
       if (showOther) chart.unsubscribeCrosshairMove(handleCrosshairMove);
+      const visible = chart.timeScale().getVisibleRange();
+      if (visible) savedRangeRef.current = visible as { from: UTCTimestamp; to: UTCTimestamp };
       chart.remove();
     };
   }, [
     liveCandles, liveOtherCandles, liveSignal, liveDivergence, trades, latestTradeLevels, symbol, otherIndexSymbol,
     hasOtherIndex, showOtherIndex, showPrimaryIndex, showDivergence, hasDivergence, isNativeInterval, applyFocus,
+    chartStyle, liveMode,
   ]);
 
   if (liveCandles.length === 0) {
@@ -407,8 +460,26 @@ export function PatternChart({
           )}
         </div>
 
+        <div className="flex items-center gap-2 text-xs" style={{ color: TEXT_SECONDARY }}>
+          <div className="flex items-center gap-1">
+            {(["candles", "line"] as const).map((style) => (
+              <button
+                key={style}
+                onClick={() => setChartStyle(style)}
+                className="rounded-md px-2 py-1 transition-colors capitalize"
+                style={
+                  chartStyle === style
+                    ? { backgroundColor: ACCENT, color: "#0b0b0b", fontWeight: 600 }
+                    : { backgroundColor: SURFACE, border: `1px solid ${BORDER}`, color: TEXT_PRIMARY }
+                }
+              >
+                {style}
+              </button>
+            ))}
+          </div>
+
         {(liveMode || (chartStartIso && chartEndIso)) && (
-          <div className="flex items-center gap-1 text-xs" style={{ color: TEXT_SECONDARY }}>
+          <div className="flex items-center gap-1" style={{ color: TEXT_SECONDARY }}>
             {TIMEFRAMES.map((tf) => (
               <button
                 key={tf.interval}
@@ -427,6 +498,7 @@ export function PatternChart({
             {loading && <span style={{ color: TEXT_MUTED }}>loading...</span>}
           </div>
         )}
+        </div>
       </div>
       {shownRange && (
         <p className="text-xs mb-2" style={{ color: TEXT_MUTED }}>
