@@ -13,6 +13,7 @@ import { BannerBackground } from "@/components/BannerBackground";
 import { PatternChart } from "@/components/PatternChart";
 import { ForwardStatusBadge, type ForwardStatus } from "@/components/ForwardStatusBadge";
 import { getCandles } from "@/lib/candles";
+import { windowedRange } from "@/lib/chartWindow";
 import { detectDivergences, type DivergenceEvent } from "@/lib/structure";
 import { fetchAllRows } from "@/lib/fetchAll";
 import { computeFeatureSeries, evaluateSignal } from "@/lib/indicators";
@@ -108,8 +109,12 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
     const entryTimes = tradeList.map((t) => new Date(t.entry_time).getTime());
     const exitTimes = tradeList.map((t) => new Date(t.exit_time).getTime());
     const padMs = 20 * 24 * 60 * 60 * 1000; // 20 days
-    chartStart = new Date(Math.min(...entryTimes) - padMs);
-    chartEnd = new Date(Math.min(Math.max(...exitTimes) + padMs, Date.now()));
+    const fullStart = new Date(Math.min(...entryTimes) - padMs);
+    const fullEnd = new Date(Math.min(Math.max(...exitTimes) + padMs, Date.now()));
+    // Cap the initial fetch for fine intraday intervals too (not just the client-side
+    // timeframe switcher) -- a 1-minute-native experiment whose trades span months
+    // would otherwise fetch and render an enormous candle count on first load.
+    ({ start: chartStart, end: chartEnd } = windowedRange(exp.interval, fullStart, fullEnd));
     candles = await getCandles(exp.symbol, exp.interval, exp.source, chartStart, chartEnd);
 
     // The paired index's own real candles, shown in a second pane -- seeing the actual

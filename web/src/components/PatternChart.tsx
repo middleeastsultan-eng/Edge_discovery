@@ -10,6 +10,7 @@ import type { ExperimentTrade, ClauseJson } from "@/lib/supabase";
 import { detectDivergences, type DivergenceEvent } from "@/lib/structure";
 import { computeFeatureSeries, evaluateSignal } from "@/lib/indicators";
 import { DivergenceBandPrimitive } from "./chartPrimitives";
+import { windowedRange } from "@/lib/chartWindow";
 import { TEXT_MUTED, TEXT_SECONDARY, TEXT_PRIMARY, CHART_AMBER, CHART_BLUE, CHART_TEAL, SURFACE, BORDER, ACCENT } from "@/lib/theme";
 
 // Canvas (what lightweight-charts renders to) doesn't understand CSS custom property
@@ -85,6 +86,12 @@ export function PatternChart({
   const [liveOtherCandles, setLiveOtherCandles] = useState(otherIndexCandles ?? []);
   const [liveDivergence, setLiveDivergence] = useState(divergenceEvents ?? []);
   const [liveSignal, setLiveSignal] = useState(signal);
+  // What's actually being shown right now -- distinct from chartStartIso/chartEndIso
+  // (the experiment's full validation+test span), since a finer timeframe narrows the
+  // window. Always shown as a caption so "is this old data?" has a direct answer.
+  const [shownRange, setShownRange] = useState<{ start: string; end: string } | null>(
+    chartStartIso && chartEndIso ? { start: chartStartIso, end: chartEndIso } : null,
+  );
 
   const isNativeInterval = activeInterval === interval;
   const hasOtherIndex = liveOtherCandles.length > 0 && !!otherIndexSymbol;
@@ -100,8 +107,10 @@ export function PatternChart({
     if (newInterval === activeInterval || !chartStartIso || !chartEndIso) return;
     setLoading(true);
     try {
+      const { start: effectiveStart, end: fullEnd } = windowedRange(newInterval, new Date(chartStartIso), new Date(chartEndIso));
+
       const fetchOne = async (sym: string) => {
-        const url = `/api/candles?symbol=${encodeURIComponent(sym)}&interval=${encodeURIComponent(newInterval)}&source=${encodeURIComponent(source)}&start=${encodeURIComponent(chartStartIso)}&end=${encodeURIComponent(chartEndIso)}`;
+        const url = `/api/candles?symbol=${encodeURIComponent(sym)}&interval=${encodeURIComponent(newInterval)}&source=${encodeURIComponent(source)}&start=${encodeURIComponent(effectiveStart.toISOString())}&end=${encodeURIComponent(fullEnd.toISOString())}`;
         const res = await fetch(url);
         if (!res.ok) return [] as Candle[];
         const data = await res.json();
@@ -121,6 +130,7 @@ export function PatternChart({
       setLiveSignal(evaluateSignal(features, clauses));
 
       setActiveInterval(newInterval);
+      setShownRange({ start: effectiveStart.toISOString(), end: fullEnd.toISOString() });
     } finally {
       setLoading(false);
     }
@@ -129,7 +139,23 @@ export function PatternChart({
   // Hover-driven focus: dims whichever symbol's candles the mouse ISN'T over (or
   // isn't hovering the legend label for), applied imperatively via series refs --
   // deliberately NOT React state, so every mouse-move doesn't trigger a chart rebuild.
+  //
+  // Two real bugs fixed here after direct feedback:
+  // 1. This used to run on EVERY crosshair-move event (i.e. every pixel the mouse
+  //    crosses), calling .applyOptions() -- a real repaint -- dozens of times a second
+  //    regardless of whether focus had actually changed. lastFocusRef skips the no-op
+  //    calls, which was the dominant cause of the chart feeling heavy while hovering.
+  // 2. Both series share one pane, and whichever was added SECOND always draws on top
+  //    of the other regardless of opacity -- dimming the back series doesn't reveal the
+  //    front one if the front one still paints fully opaque over it. setSeriesOrder()
+  //    now brings the focused series to the front on each real focus change (cheap --
+  //    just a draw-order index, not a series recreation) so dimming the other actually
+  //    becomes visible instead of staying hidden underneath an opaque top layer.
+  const lastFocusRef = useRef<"primary" | "other" | null | undefined>(undefined);
   const applyFocus = useCallback((focus: "primary" | "other" | null) => {
+    if (focus === lastFocusRef.current) return;
+    lastFocusRef.current = focus;
+
     const { good, bad, blue, teal } = colorsRef.current;
     const primaryOpacity = focus === "other" ? DIMMED_OPACITY : FOCUSED_OPACITY;
     const otherOpacity = focus === "primary" ? DIMMED_OPACITY : FOCUSED_OPACITY;
@@ -141,10 +167,20 @@ export function PatternChart({
       upColor: withAlpha(blue, otherOpacity), downColor: withAlpha(teal, otherOpacity),
       wickUpColor: withAlpha(blue, otherOpacity), wickDownColor: withAlpha(teal, otherOpacity),
     });
+
+    if (focus === "primary") {
+      primarySeriesRef.current?.setSeriesOrder(1);
+      otherSeriesRef.current?.setSeriesOrder(0);
+    } else if (focus === "other") {
+      otherSeriesRef.current?.setSeriesOrder(1);
+      primarySeriesRef.current?.setSeriesOrder(0);
+    }
   }, []);
 
   useEffect(() => {
     if (!containerRef.current || liveCandles.length === 0) return;
+
+    lastFocusRef.current = undefined; // new series instances below -- forget any prior hover state
 
     const good = resolveCssVar("var(--tl-status-good)", "#0ca30c");
     const bad = resolveCssVar("var(--tl-status-critical)", "#d03b3b");
@@ -353,6 +389,12 @@ export function PatternChart({
           </div>
         )}
       </div>
+      {shownRange && (
+        <p className="text-xs mb-2" style={{ color: TEXT_MUTED }}>
+          Showing {new Date(shownRange.start).toLocaleDateString()} &rarr; {new Date(shownRange.end).toLocaleDateString()}
+          {isNativeInterval ? " (full study window)" : ` (recent window at ${TIMEFRAMES.find((t) => t.interval === activeInterval)?.label ?? activeInterval} resolution)`}
+        </p>
+      )}
       <div ref={containerRef} className="w-full" />
     </div>
   );
