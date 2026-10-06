@@ -51,7 +51,6 @@ def process_new_trades() -> ProcessResult:
 
     account = db.get_paper_account()
     equity = account["equity"]
-    watermark = account["watermark"]
 
     promoted = db.get_promoted_patterns_with_promotion_time()
     if promoted.empty:
@@ -61,8 +60,10 @@ def process_new_trades() -> ProcessResult:
     for _, row in promoted.iterrows():
         experiment_id = int(row["experiment_id"])
         promoted_at = row["promoted_at"]
-        after = max(promoted_at, watermark) if watermark is not None else promoted_at
-        trades = db.get_unprocessed_forward_trades(experiment_id, after)
+        # get_unprocessed_forward_trades already excludes anything with a matching
+        # paper_trades row -- no separate "since last run" cursor needed per pattern,
+        # and deliberately no shared cross-pattern cursor (see its docstring for why).
+        trades = db.get_unprocessed_forward_trades(experiment_id, promoted_at)
         for _, t in trades.iterrows():
             candidates.append({
                 "experiment_id": experiment_id,
@@ -83,7 +84,9 @@ def process_new_trades() -> ProcessResult:
     ]
 
     result = ProcessResult(equity_before=equity)
-    new_watermark = watermark
+    # Purely informational now (e.g. "processed through" on the dashboard) -- no longer
+    # used to decide what counts as unprocessed, see get_unprocessed_forward_trades.
+    new_watermark = account["watermark"]
 
     for c in candidates:
         open_risk = sum(

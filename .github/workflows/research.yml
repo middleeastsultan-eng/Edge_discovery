@@ -13,160 +13,92 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # 15-minute timeframes have far more historical bars -> slower backtests,
-          # so they get fewer discovery candidates to stay inside the time budget.
-          - source: crypto
-            symbol: BTCUSDT
-            interval: 15m
-            start: "2019-01-01"
-            end: "2026-01-01"
-            n_candidates: 400
-          - source: crypto
-            symbol: BTCUSDT
-            interval: 1h
-            start: "2019-01-01"
-            end: "2026-01-01"
-            n_candidates: 800
-          - source: crypto
-            symbol: ETHUSDT
-            interval: 15m
-            start: "2019-01-01"
-            end: "2026-01-01"
-            n_candidates: 400
-          - source: crypto
-            symbol: ETHUSDT
-            interval: 1h
-            start: "2019-01-01"
-            end: "2026-01-01"
-            n_candidates: 800
+          # Nasdaq 100 / S&P 500 only (QQQ/SPY) -- crypto (BTCUSDT/ETHUSDT) was dropped
+          # entirely on purpose: a pro trader's read was that splitting discovery compute
+          # across asset classes with very different regimes was adding noise, not edge.
+          # All freed-up budget goes to these two symbols, with 1-minute specifically
+          # getting a much bigger candidate count now that it isn't competing with crypto.
           - source: stocks
             symbol: SPY
             interval: 15Min
             start: "2020-08-01"
             end: "2026-01-01"
-            n_candidates: 400
+            n_candidates: 800
           - source: stocks
             symbol: SPY
             interval: 1Hour
             start: "2020-08-01"
             end: "2026-01-01"
-            n_candidates: 800
+            n_candidates: 1500
           - source: stocks
             symbol: QQQ
             interval: 15Min
             start: "2020-08-01"
             end: "2026-01-01"
-            n_candidates: 400
+            n_candidates: 800
           - source: stocks
             symbol: QQQ
             interval: 1Hour
             start: "2020-08-01"
             end: "2026-01-01"
-            n_candidates: 800
-          # 1-minute bars are ~15x denser than 15-minute -- bounded to the last ~2 years
-          # (not the full history) to keep fetch + backtest tractable, with a much
-          # smaller candidate count to stay inside the per-job time budget.
-          - source: crypto
-            symbol: BTCUSDT
-            interval: 1m
-            start: "2024-01-01"
-            end: "2026-01-01"
-            n_candidates: 100
-          - source: crypto
-            symbol: ETHUSDT
-            interval: 1m
-            start: "2024-01-01"
-            end: "2026-01-01"
-            n_candidates: 100
+            n_candidates: 1500
+          # 1-minute: the platform's main current focus -- bounded to the last ~2 years
+          # (not the full history) to keep fetch + backtest tractable, but with a much
+          # larger candidate budget than before now that it's not sharing the matrix
+          # with crypto's 1-minute jobs.
           - source: stocks
             symbol: SPY
             interval: 1Min
             start: "2024-01-01"
             end: "2026-01-01"
-            n_candidates: 100
+            n_candidates: 600
           - source: stocks
             symbol: QQQ
             interval: 1Min
             start: "2024-01-01"
             end: "2026-01-01"
-            n_candidates: 100
+            n_candidates: 600
           # 5-minute: denser than 15-minute, so fewer candidates than the 15m combos above.
-          - source: crypto
-            symbol: BTCUSDT
-            interval: 5m
-            start: "2019-01-01"
-            end: "2026-01-01"
-            n_candidates: 200
-          - source: crypto
-            symbol: ETHUSDT
-            interval: 5m
-            start: "2019-01-01"
-            end: "2026-01-01"
-            n_candidates: 200
           - source: stocks
             symbol: SPY
             interval: 5Min
             start: "2020-08-01"
             end: "2026-01-01"
-            n_candidates: 200
+            n_candidates: 400
           - source: stocks
             symbol: QQQ
             interval: 5Min
             start: "2020-08-01"
             end: "2026-01-01"
-            n_candidates: 200
+            n_candidates: 400
           # 30-minute: between 15m and 1h in density.
-          - source: crypto
-            symbol: BTCUSDT
-            interval: 30m
-            start: "2019-01-01"
-            end: "2026-01-01"
-            n_candidates: 500
-          - source: crypto
-            symbol: ETHUSDT
-            interval: 30m
-            start: "2019-01-01"
-            end: "2026-01-01"
-            n_candidates: 500
           - source: stocks
             symbol: SPY
             interval: 30Min
             start: "2020-08-01"
             end: "2026-01-01"
-            n_candidates: 500
+            n_candidates: 1000
           - source: stocks
             symbol: QQQ
             interval: 30Min
             start: "2020-08-01"
             end: "2026-01-01"
-            n_candidates: 500
+            n_candidates: 1000
           # Daily: far fewer bars than any intraday interval, so it can afford many more
           # candidates per pass -- but note validate.py's sample-size scoring wants 100+
           # combined validation+test trades, which a daily rule may rarely reach.
-          - source: crypto
-            symbol: BTCUSDT
-            interval: 1d
-            start: "2019-01-01"
-            end: "2026-01-01"
-            n_candidates: 2000
-          - source: crypto
-            symbol: ETHUSDT
-            interval: 1d
-            start: "2019-01-01"
-            end: "2026-01-01"
-            n_candidates: 2000
           - source: stocks
             symbol: SPY
             interval: 1Day
             start: "2020-08-01"
             end: "2026-01-01"
-            n_candidates: 1500
+            n_candidates: 2500
           - source: stocks
             symbol: QQQ
             interval: 1Day
             start: "2020-08-01"
             end: "2026-01-01"
-            n_candidates: 1500
+            n_candidates: 2500
     steps:
       - uses: actions/checkout@v4
 

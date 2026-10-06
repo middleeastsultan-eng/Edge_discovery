@@ -158,6 +158,22 @@ ALTER TABLE forward_signal_alerts ADD COLUMN IF NOT EXISTS entry_price DOUBLE PR
 ALTER TABLE forward_signal_alerts ADD COLUMN IF NOT EXISTS stop_price DOUBLE PRECISION;
 ALTER TABLE forward_signal_alerts ADD COLUMN IF NOT EXISTS target_price DOUBLE PRECISION;
 
+-- Append-only log, one row per check_pattern() call for any pattern in forward tracking --
+-- gives a real time series of a pattern's forward record over time, instead of only the
+-- latest snapshot forward_validation stores. This is what lets the dashboard show how
+-- long a promoted pattern has survived and whether it was ever demoted back to tracking.
+CREATE TABLE IF NOT EXISTS forward_validation_history (
+    id SERIAL PRIMARY KEY,
+    experiment_id INTEGER NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
+    checked_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    status TEXT NOT NULL,
+    n_trades INTEGER NOT NULL,
+    expectancy_r DOUBLE PRECISION NOT NULL,
+    lower_bound_r DOUBLE PRECISION NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_forward_validation_history_experiment_id ON forward_validation_history(experiment_id);
+ALTER TABLE forward_validation_history ENABLE ROW LEVEL SECURITY;
+
 -- Single-row remote control for the local multiprocessing research loop (run_overnight.py).
 -- The dashboard writes here; the local script polls it once per round to decide how many
 -- worker processes to run and whether to pause. id is always 1 -- not a history, a live knob.
@@ -352,6 +368,47 @@ def save_experiment(
     return experiment_id
 
 
+def update_experiment_scoring(experiment_id: int, walk_forward: pd.DataFrame | None, robustness_score: dict) -> None:
+    """Overwrites a stored experiment's walk_forward + robustness_score in place --
+    used by the one-off migration that corrected walk_forward's out-of-sample leak
+    (it used to run over the full discovery+val+test range; see pipeline.py). Never
+    touches discovery/validation/test stats, clauses, or trades, which are unaffected
+    by that specific fix.
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE experiments SET walk_forward = %s, robustness_score = %s WHERE id = %s",
+                (_df_to_json(walk_forward), json.dumps(_json_safe(robustness_score)), experiment_id),
+            )
+        conn.commit()
+
+
+def update_trade_exits(updates: list[tuple[int, object, int]]) -> None:
+    """Batch-corrects (trade_id, exit_time, bars_held) for existing trades -- used by
+    the one-off migration that fixed backtest.py's time-exit off-by-one (the recorded
+    exit_time pointed at the bar whose CLOSE triggered the decision, not the bar whose
+    OPEN was actually used as the fill price; r_multiple itself was already correct and
+    is untouched here).
+    """
+    if not updates:
+        return
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur,
+                """
+                UPDATE experiment_trades AS et
+                SET exit_time = v.exit_time, bars_held = v.bars_held
+                FROM (VALUES %s) AS v(id, exit_time, bars_held)
+                WHERE et.id = v.id
+                """,
+                updates,
+                template="(%s, %s::timestamptz, %s::int)",
+            )
+        conn.commit()
+
+
 def total_hypotheses_tested() -> int:
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -512,6 +569,44 @@ def upsert_forward_validation(experiment_id: int, status: str, forward_stats: di
         conn.commit()
 
 
+def record_forward_check(experiment_id: int, status: str, n_trades: int,
+                          expectancy_r: float, lower_bound_r: float) -> None:
+    """Appends one row to the forward-validation history log -- called on every
+    check_pattern() call (not just promotion-worthy ones), so a pattern's survival
+    (or demotion) over time is a real queryable series, not just the latest snapshot.
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO forward_validation_history
+                    (experiment_id, status, n_trades, expectancy_r, lower_bound_r)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (experiment_id, status, n_trades, expectancy_r, lower_bound_r),
+            )
+        conn.commit()
+
+
+def get_forward_validation_history(experiment_id: int) -> list[dict]:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT checked_at, status, n_trades, expectancy_r, lower_bound_r
+                FROM forward_validation_history
+                WHERE experiment_id = %s
+                ORDER BY checked_at ASC
+                """,
+                (experiment_id,),
+            )
+            rows = cur.fetchall()
+    return [
+        {"checked_at": r[0], "status": r[1], "n_trades": r[2], "expectancy_r": r[3], "lower_bound_r": r[4]}
+        for r in rows
+    ]
+
+
 def record_alert_if_new(experiment_id: int, bar_time, entry_price: float | None = None,
                          stop_price: float | None = None, target_price: float | None = None) -> bool:
     """Returns True (and logs it) only the first time this exact signal bar is seen --
@@ -633,18 +728,36 @@ def get_promoted_patterns_with_promotion_time() -> pd.DataFrame:
         )
 
 
-def get_unprocessed_forward_trades(experiment_id: int, after) -> pd.DataFrame:
-    """Forward trades for one pattern with entry_time strictly after `after` (either the
-    pattern's promoted_at or the paper account's watermark, whichever the caller needs).
+def get_unprocessed_forward_trades(experiment_id: int, promoted_at) -> pd.DataFrame:
+    """Forward trades for one pattern, entered after it was promoted (hindsight-bias
+    guard -- trades before promotion don't count), that don't already have a matching
+    paper_trades row.
+
+    Deliberately an anti-join against paper_trades rather than a "trades after some
+    watermark timestamp" cursor: a single global watermark shared across every promoted
+    pattern (the previous design) silently drops trades whenever one pattern's forward
+    trade for an EARLIER bar gets persisted to experiment_trades LATER than another
+    pattern's trade for a LATER bar -- which does happen, since each pattern's live
+    checks run on independent schedules and can lag (a delayed/failed GitHub Actions run
+    catching up later is exactly this scenario). Once the shared watermark advances past
+    a trade's entry_time, a global-cursor design would skip that trade forever. Checking
+    existence per (experiment_id, entry_time) instead is correct regardless of the order
+    trades actually arrive in.
     """
     with get_connection() as conn:
         return pd.read_sql(
             """
-            SELECT entry_time, exit_time, r_multiple FROM experiment_trades
-            WHERE experiment_id = %(experiment_id)s AND split = 'forward' AND entry_time > %(after)s
-            ORDER BY entry_time
+            SELECT et.entry_time, et.exit_time, et.r_multiple
+            FROM experiment_trades et
+            WHERE et.experiment_id = %(experiment_id)s AND et.split = 'forward'
+              AND et.entry_time > %(promoted_at)s
+              AND NOT EXISTS (
+                  SELECT 1 FROM paper_trades pt
+                  WHERE pt.experiment_id = et.experiment_id AND pt.entry_time = et.entry_time
+              )
+            ORDER BY et.entry_time
             """,
-            conn, params={"experiment_id": experiment_id, "after": after},
+            conn, params={"experiment_id": experiment_id, "promoted_at": promoted_at},
         )
 
 

@@ -16,49 +16,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Mirrors every symbol/interval combo research.yml can produce patterns for.
-          - source: crypto
-            symbol: BTCUSDT
-            interval: 1m
-          - source: crypto
-            symbol: BTCUSDT
-            interval: 5m
-          - source: crypto
-            symbol: BTCUSDT
-            interval: 15m
-          - source: crypto
-            symbol: BTCUSDT
-            interval: 30m
-          - source: crypto
-            symbol: BTCUSDT
-            interval: 1h
-          - source: crypto
-            symbol: BTCUSDT
-            interval: 4h
-          - source: crypto
-            symbol: BTCUSDT
-            interval: 1d
-          - source: crypto
-            symbol: ETHUSDT
-            interval: 1m
-          - source: crypto
-            symbol: ETHUSDT
-            interval: 5m
-          - source: crypto
-            symbol: ETHUSDT
-            interval: 15m
-          - source: crypto
-            symbol: ETHUSDT
-            interval: 30m
-          - source: crypto
-            symbol: ETHUSDT
-            interval: 1h
-          - source: crypto
-            symbol: ETHUSDT
-            interval: 4h
-          - source: crypto
-            symbol: ETHUSDT
-            interval: 1d
+          # Nasdaq 100 / S&P 500 only (QQQ/SPY) -- mirrors research.yml's symbol scope.
+          # Crypto (BTCUSDT/ETHUSDT) dropped entirely, same reasoning as research.yml.
           - source: stocks
             symbol: SPY
             interval: 1Min

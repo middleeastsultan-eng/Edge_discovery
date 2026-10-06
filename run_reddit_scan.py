@@ -31,11 +31,10 @@ from trading_lab.explain import describe_rule
 from trading_lab.pipeline import is_novel_pass, is_pass, run_reddit_experiment
 from trading_lab.telegram import send_message
 
-# (source, symbol, interval, start, end) -- v1 tests every testable strategy against
-# all four tracked symbols at 1h, same date ranges used elsewhere in the pipeline.
+# (source, symbol, interval, start, end) -- tests every testable strategy against the
+# two tracked symbols (QQQ/SPY only -- crypto dropped, see research.yml) at 1h, same
+# date ranges used elsewhere in the pipeline.
 TARGETS = [
-    ("crypto", "BTCUSDT", "1h", "2019-01-01", "2026-01-01"),
-    ("crypto", "ETHUSDT", "1h", "2019-01-01", "2026-01-01"),
     ("stocks", "SPY", "1Hour", "2020-08-01", "2026-01-01"),
     ("stocks", "QQQ", "1Hour", "2020-08-01", "2026-01-01"),
 ]

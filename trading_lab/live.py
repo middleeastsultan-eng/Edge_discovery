@@ -30,6 +30,7 @@ from .data_stocks import fetch_bars
 from .discovery import Candidate, Clause
 from .features import build_features
 from .metrics import TradeStats, compute_stats
+from .validate import bootstrap_mean_lower_bound
 
 # A pattern needs this many forward (live/paper) trades before its forward stats mean
 # anything -- below this, status stays "tracking" regardless of how good those few
@@ -46,6 +47,11 @@ RETENTION_MIN = 0.5
 # not perfectly still deserves a real-world shot, since live performance (not backtest
 # score) is what actually earns a pattern the right to alert.
 TRACKING_MIN_SCORE = 80.0
+
+# One-sided bootstrap confidence level required on forward expectancy to promote --
+# "statistically unlikely to be luck," not just "the raw mean happens to be positive."
+# See validate.bootstrap_mean_lower_bound.
+PROMOTION_CONFIDENCE = 0.90
 
 _LOOKBACK_BARS = 3000
 _MIN_LOOKBACK_DAYS = 10
@@ -105,13 +111,19 @@ def fetch_live_features(symbol: str, interval: str, source: str) -> pd.DataFrame
     return build_features(raw)
 
 
-def evaluate_promotion(forward_stats: TradeStats, test_expectancy_r: float) -> str:
+def evaluate_promotion(forward_stats: TradeStats, test_expectancy_r: float, lower_bound_r: float) -> str:
     """Re-decided on every check -- this is what makes forward validation continuous
     rather than a one-time gate a pattern passes once and keeps forever.
+
+    lower_bound_r (from validate.bootstrap_mean_lower_bound) replaces a plain
+    `expectancy_r <= 0` check: promotion now requires the bootstrap-resampled mean's
+    lower confidence bound to be positive, not just the raw mean -- a thin or
+    inconsistent forward record produces a wide (often negative) bound even when its
+    raw mean looks fine, so this is a strictly harder bar to clear.
     """
     if forward_stats.n_trades < MIN_FORWARD_TRADES:
         return "tracking"
-    if forward_stats.expectancy_r <= 0:
+    if lower_bound_r <= 0:
         return "tracking"
     if test_expectancy_r > 0 and forward_stats.expectancy_r < RETENTION_MIN * test_expectancy_r:
         return "tracking"
@@ -126,6 +138,7 @@ class CheckResult:
     forward_stats: TradeStats
     status: str
     new_trade_count: int
+    lower_bound_r: float
 
 
 def check_pattern(experiment_row: dict, feats: pd.DataFrame, config: BacktestConfig = BacktestConfig()) -> CheckResult:
@@ -141,7 +154,7 @@ def check_pattern(experiment_row: dict, feats: pd.DataFrame, config: BacktestCon
 
     if feats.empty:
         forward_stats = compute_stats([])
-        return CheckResult(experiment_id, False, None, forward_stats, "tracking", 0)
+        return CheckResult(experiment_id, False, None, forward_stats, "tracking", 0, float("-inf"))
 
     candidate = Candidate(clauses=[Clause(**c) for c in experiment_row["clauses"]])
     signal = candidate.signal(feats)
@@ -155,14 +168,18 @@ def check_pattern(experiment_row: dict, feats: pd.DataFrame, config: BacktestCon
 
     all_forward = db.get_trades(experiment_id, "forward")
     forward_stats = compute_stats(all_forward["r_multiple"]) if len(all_forward) else compute_stats([])
+    lower_bound_r = (
+        bootstrap_mean_lower_bound(all_forward["r_multiple"], confidence=PROMOTION_CONFIDENCE)
+        if len(all_forward) else float("-inf")
+    )
 
     test_stats = experiment_row.get("test_stats") or {}
-    status = evaluate_promotion(forward_stats, float(test_stats.get("expectancy_r", 0.0)))
+    status = evaluate_promotion(forward_stats, float(test_stats.get("expectancy_r", 0.0)), lower_bound_r)
 
     pending = bool(signal.iloc[-1])
     bar_time = feats.index[-1]
 
-    return CheckResult(experiment_id, pending, bar_time, forward_stats, status, len(new_trades))
+    return CheckResult(experiment_id, pending, bar_time, forward_stats, status, len(new_trades), lower_bound_r)
 
 
 def build_promotion_message(experiment_row: dict, forward_stats: TradeStats) -> str:

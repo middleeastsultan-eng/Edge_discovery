@@ -69,6 +69,10 @@ def main():
             experiment_id, result.status, result.forward_stats.as_dict(),
             promoted_at=datetime.now(timezone.utc) if result.status == "promoted" else None,
         )
+        db.record_forward_check(
+            experiment_id, result.status, result.forward_stats.n_trades,
+            result.forward_stats.expectancy_r, result.lower_bound_r,
+        )
 
         print(
             f"  experiment {experiment_id} ({experiment_row['rule']}): "

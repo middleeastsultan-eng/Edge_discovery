@@ -82,8 +82,13 @@ def run_backtest(df: pd.DataFrame, entry_signal: pd.Series, config: BacktestConf
                 # fabricate a close with a price that isn't actually a forward fill;
                 # there's nothing further the loop could correctly evaluate anyway.
                 break
-            exit_j = last_bar
-            exit_price = opens[exit_j + 1] * (1 - slip_frac)
+            # The decision to give up is only knowable once last_bar has fully closed
+            # without hitting stop/target, so (same no-look-ahead reasoning as entries)
+            # the fill happens at the FOLLOWING bar's open -- exit_j must point at that
+            # bar, not last_bar itself, so exit_time/bars_held reflect when the position
+            # actually closed rather than the bar that merely triggered the decision.
+            exit_j = last_bar + 1
+            exit_price = opens[exit_j] * (1 - slip_frac)
             exit_reason = "time"
 
         # entry_price (not raw_entry) so the realized R-multiple reflects the full

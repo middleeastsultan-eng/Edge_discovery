@@ -26,6 +26,8 @@ from discovery-set noise is exactly the one that selection process favors. Inste
 
 from __future__ import annotations
 
+import pandas as pd
+
 from . import db
 from .backtest import BacktestConfig
 from .data import get_candles
@@ -143,7 +145,18 @@ def run_experiment(
             avg_loss_r=float(row["avg_loss_r"]),
         )
 
-        wf = walk_forward(feats, cand_obj, n_windows=6, config=config)
+        # Out-of-sample only (validation+test, chronologically concatenated) -- walk_forward
+        # exists specifically to check consistency across independent windows the rule
+        # wasn't fit to. Running it over the full `feats` range (as this used to do) put
+        # the discovery window's own fitting data inside several of the "consistency"
+        # windows -- on a typical 60/20/20 split, 3 of 6 windows landed ENTIRELY inside
+        # the discovery range (confirmed directly: windows 1-3 were 100% in-sample, window
+        # 4 was 60% in-sample), where the rule is close to guaranteed to look good since
+        # that's literally the data it was selected for. That silently inflated
+        # walk_forward_stability -- one of robustness_score's components -- for every
+        # candidate, the opposite of what the rest of the scoring scheme is careful about.
+        oos_df = pd.concat([val_df, test_df])
+        wf = walk_forward(oos_df, cand_obj, n_windows=6, config=config)
         mc = monte_carlo(test_trades["r_multiple"]) if len(test_trades) else None
         cs = cost_stress(test_df, cand_obj, config)
         pert = parameter_perturbation(discovery_df, cand_obj, config)
@@ -239,7 +252,8 @@ def run_reddit_experiment(
         return None
 
     rule = cand_obj.describe()
-    wf = walk_forward(feats, cand_obj, n_windows=6, config=config)
+    oos_df = pd.concat([val_df, test_df])
+    wf = walk_forward(oos_df, cand_obj, n_windows=6, config=config)
     mc = monte_carlo(test_trades["r_multiple"]) if len(test_trades) else None
     cs = cost_stress(test_df, cand_obj, config)
     pert = parameter_perturbation(discovery_df, cand_obj, config)

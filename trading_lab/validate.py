@@ -90,6 +90,32 @@ def monte_carlo(r_multiples: np.ndarray | pd.Series, n_sims: int = 5000, seed: i
     }
 
 
+def bootstrap_mean_lower_bound(
+    r_multiples: np.ndarray | pd.Series, confidence: float = 0.90, n_sims: int = 5000, seed: int = 7
+) -> float:
+    """One-sided bootstrap confidence bound on the true mean expectancy: resample the
+    trade sequence (with replacement) n_sims times, take each resample's mean, and
+    return the (1-confidence) percentile of that distribution of means.
+
+    If this is > 0, there's `confidence` probability the true mean expectancy is
+    positive -- a strictly stronger bar than checking the raw sample mean (this bound
+    is always <= the raw mean), since it also accounts for how much the mean varies
+    across resamples. Thin or inconsistent samples produce a wide spread of resampled
+    means and a lower (often negative) bound, so this is already the right, data-driven
+    way to require "enough trades, consistently enough" instead of a second trade-count
+    threshold. Same resampling idea as monte_carlo() above, applied to the mean instead
+    of the cumulative equity path.
+    """
+    r = np.asarray(r_multiples, dtype=float)
+    n = len(r)
+    if n == 0:
+        return -np.inf
+
+    rng = np.random.default_rng(seed)
+    means = np.array([rng.choice(r, size=n, replace=True).mean() for _ in range(n_sims)])
+    return float(np.percentile(means, (1 - confidence) * 100))
+
+
 def cost_stress(
     df: pd.DataFrame,
     candidate: Candidate,
