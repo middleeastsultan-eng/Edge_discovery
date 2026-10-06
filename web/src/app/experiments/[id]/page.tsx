@@ -102,6 +102,7 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
   let qqqSeries: { time: number; value: number }[] = [];
   let spySeries: { time: number; value: number }[] = [];
   let divergenceEvents: DivergenceEvent[] = [];
+  let otherIndexCandles: Awaited<ReturnType<typeof getCandles>> = [];
   if (tradeList.length > 0 && exp.source) {
     const entryTimes = tradeList.map((t) => new Date(t.entry_time).getTime());
     const exitTimes = tradeList.map((t) => new Date(t.exit_time).getTime());
@@ -126,11 +127,15 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
     // has preceded a strong directional run. Flagged for tracking/visual confirmation;
     // not yet wired into discovery/backtesting, which only looks at one symbol at a time.
     divergenceEvents = detectDivergences(qqqCandles, spyCandles);
+
+    // The signal strip below needs the OTHER index's candles too, for any rule using
+    // bos_divergence_bullish/bearish -- QQQ's other is SPY and vice versa.
+    otherIndexCandles = exp.symbol === "QQQ" ? spyCandles : exp.symbol === "SPY" ? qqqCandles : [];
   }
 
   // Signal overlay: where the rule's raw boolean condition was historically true, not
   // just where trades were actually taken (the markers already show that separately).
-  const features = computeFeatureSeries(candles);
+  const features = computeFeatureSeries(candles, otherIndexCandles);
   const signal = evaluateSignal(features, exp.clauses);
 
   // Buy/sell price lines: a concrete worked example tied to the most recent real trade,

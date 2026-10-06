@@ -30,6 +30,7 @@ import pandas as pd
 
 from . import db
 from .backtest import BacktestConfig
+from .cross_asset import PAIRED_INDEX
 from .data import get_candles
 from .data_stocks import get_stock_candles
 from .discovery import Candidate, Clause, search
@@ -46,6 +47,17 @@ from .validate import (
     robustness_score,
     walk_forward,
 )
+
+
+def _fetch_paired_index(symbol: str, interval: str, start: str, end: str, source: str) -> pd.DataFrame | None:
+    """Fetches the OTHER tracked index's raw OHLCV for the cross-asset structure-
+    divergence features (see cross_asset.py) -- QQQ's pair is SPY and vice versa. None
+    if this symbol has no defined pair (anything other than QQQ/SPY) or isn't stocks.
+    """
+    other_symbol = PAIRED_INDEX.get(symbol)
+    if other_symbol is None or source != "stocks":
+        return None
+    return get_stock_candles(other_symbol, interval, start, end)
 
 
 def run_experiment(
@@ -74,7 +86,8 @@ def run_experiment(
     else:
         raw = get_candles(symbol, interval, start, end)
 
-    feats = build_features(raw)
+    other_raw = _fetch_paired_index(symbol, interval, start, end, source)
+    feats = build_features(raw, other_raw)
     discovery_df, val_df, test_df = chronological_split(feats)
     config = BacktestConfig()
 
@@ -233,7 +246,8 @@ def run_reddit_experiment(
     else:
         raw = get_candles(symbol, interval, start, end)
 
-    feats = build_features(raw)
+    other_raw = _fetch_paired_index(symbol, interval, start, end, source)
+    feats = build_features(raw, other_raw)
     discovery_df, val_df, test_df = chronological_split(feats)
     config = BacktestConfig()
     # clauses arrives as plain dicts (reddit_scan.extract_strategy's JSON output) --

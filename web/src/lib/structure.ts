@@ -29,8 +29,14 @@ export function findSwingPoints(candles: Candle[], lookback: number = 5): SwingP
     const window = candles.slice(i - lookback, i + lookback + 1);
     const isHigh = window.every((c) => c.high <= candles[i].high);
     const isLow = window.every((c) => c.low >= candles[i].low);
+    // A bar can satisfy both conditions in a tight/choppy window -- at most one kind
+    // is recorded per bar (a Map keyed by time can only hold one), "high" taking
+    // priority, matching cross_asset.py's Python port exactly (confirmed this was a
+    // real mismatch: without a deterministic tie-break, Python's first-write-wins
+    // ("high" set first, "low" only if still unset) disagreed with a naive two-push
+    // version here, which let "low" silently overwrite "high" in the Map build step).
     if (isHigh) points.push({ time: candles[i].time, price: candles[i].high, kind: "high" });
-    if (isLow) points.push({ time: candles[i].time, price: candles[i].low, kind: "low" });
+    else if (isLow) points.push({ time: candles[i].time, price: candles[i].low, kind: "low" });
   }
   return points;
 }
@@ -110,4 +116,58 @@ export function detectDivergences(
     }
   }
   return divergences.sort((a, b) => a.time - b.time);
+}
+
+/** Backward-looking-only mirror of trading_lab/cross_asset.py's compute_divergence_features
+ * -- unlike detectDivergences above (which deliberately looks both forward and backward
+ * in time for the chart's retrospective markers), this only ever asks "in the last
+ * `window` bars, did THIS symbol break structure that the OTHER symbol hasn't
+ * confirmed yet" -- the same backward-only definition the Python discovery/backtest
+ * pipeline uses, so a rule using bos_divergence_bullish/bearish lights up on the
+ * chart's gold signal strip at exactly the bars the real feature would be true.
+ */
+export function computeDivergenceFeatureSeries(
+  thisCandles: Candle[], otherCandles: Candle[], lookback: number = 5, window: number = 5,
+): { bullish: boolean[]; bearish: boolean[] } {
+  const n = thisCandles.length;
+  if (n === 0 || otherCandles.length === 0) {
+    return { bullish: new Array(n).fill(false), bearish: new Array(n).fill(false) };
+  }
+
+  const thisBos = detectBreaksOfStructure(thisCandles, lookback);
+  const otherBos = detectBreaksOfStructure(otherCandles, lookback);
+  const otherByTime = new Map(otherCandles.map((c, i) => [c.time, i]));
+
+  const recentBreak = (events: BosEvent[], candles: Candle[], direction: "bullish" | "bearish"): boolean[] => {
+    const flags = candles.map((c) => events.some((e) => e.direction === direction && e.time === c.time));
+    const recent = new Array(candles.length).fill(false);
+    let lastTrue = -Infinity;
+    for (let i = 0; i < candles.length; i++) {
+      if (flags[i]) lastTrue = i;
+      recent[i] = i - lastTrue < window;
+    }
+    return recent;
+  };
+
+  const thisBullRecent = recentBreak(thisBos, thisCandles, "bullish");
+  const thisBearRecent = recentBreak(thisBos, thisCandles, "bearish");
+  const otherBullRecentByOtherIdx = recentBreak(otherBos, otherCandles, "bullish");
+  const otherBearRecentByOtherIdx = recentBreak(otherBos, otherCandles, "bearish");
+
+  // Found via direct cross-check against the Python port: QQQ and SPY don't always
+  // have a bar at the exact same timestamp (confirmed on real data -- 11595 QQQ bars
+  // vs 11336 SPY bars over the same window). Treating "no data for the other symbol
+  // here" as "the other symbol didn't confirm" inflated the divergence count (272 vs
+  // Python's correct 254) -- missing data must default to NOT divergent, matching
+  // cross_asset.py's build_features(), which only computes this feature over the
+  // intersection of both symbols' indices and fills 0.0 (no divergence) elsewhere.
+  const bullish: boolean[] = new Array(n).fill(false);
+  const bearish: boolean[] = new Array(n).fill(false);
+  for (let i = 0; i < n; i++) {
+    const otherIdx = otherByTime.get(thisCandles[i].time);
+    if (otherIdx === undefined) continue; // no data to compare against -- stays false
+    bullish[i] = thisBullRecent[i] && !otherBullRecentByOtherIdx[otherIdx];
+    bearish[i] = thisBearRecent[i] && !otherBearRecentByOtherIdx[otherIdx];
+  }
+  return { bullish, bearish };
 }

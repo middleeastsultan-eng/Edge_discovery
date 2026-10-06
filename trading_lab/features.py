@@ -8,6 +8,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from .cross_asset import compute_divergence_features
+
 
 def _rsi(close: pd.Series, period: int = 14) -> pd.Series:
     delta = close.diff()
@@ -31,8 +33,16 @@ def _atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
     return tr.ewm(alpha=1 / period, adjust=False).mean()
 
 
-def build_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Given OHLCV with a DatetimeIndex, return df with added feature columns."""
+def build_features(df: pd.DataFrame, other_df: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Given OHLCV with a DatetimeIndex, return df with added feature columns.
+
+    other_df, if given, is the OHLCV of this platform's OTHER tracked index (QQQ's
+    other_df is SPY's and vice versa, at the same symbol/interval/date range) -- used
+    only for the cross-asset structure-divergence features (see cross_asset.py). When
+    not given, those two columns are filled 0.0 (no known divergence) rather than NaN,
+    so a caller that doesn't have a paired index's data doesn't lose every row to the
+    dropna() below.
+    """
     out = df.copy()
 
     out["ema_50"] = out["close"].ewm(span=50, adjust=False).mean()
@@ -58,5 +68,16 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     ny_index = out.index.tz_convert("America/New_York")
     out["hour"] = ny_index.hour
     out["dow"] = ny_index.dayofweek
+
+    if other_df is not None:
+        common_idx = out.index.intersection(other_df.index)
+        divergence = compute_divergence_features(out.loc[common_idx], other_df.loc[common_idx])
+        out = out.join(divergence)
+        out[["bos_divergence_bullish", "bos_divergence_bearish"]] = (
+            out[["bos_divergence_bullish", "bos_divergence_bearish"]].fillna(0.0)
+        )
+    else:
+        out["bos_divergence_bullish"] = 0.0
+        out["bos_divergence_bearish"] = 0.0
 
     return out.dropna()

@@ -24,6 +24,8 @@ _FEATURE_GLOSSARY = """
 - return_5: price return over the last 5 bars
 - return_20: price return over the last 20 bars
 - hour: hour of day, New York time
+- bos_divergence_bullish: this symbol (QQQ or SPY) recently broke above a recent swing high while its counterpart index did NOT -- a cross-asset divergence
+- bos_divergence_bearish: same, but for breaking below a recent swing low
 """.strip()
 
 

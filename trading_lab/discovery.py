@@ -30,6 +30,10 @@ FEATURES = [
     "return_5",
     "return_20",
     "hour",
+    # Cross-asset: does this symbol's own QQQ/SPY counterpart recently fail to confirm
+    # a break of structure this symbol just made? See cross_asset.py.
+    "bos_divergence_bullish",
+    "bos_divergence_bearish",
 ]
 
 

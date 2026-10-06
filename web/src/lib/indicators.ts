@@ -11,6 +11,7 @@
 
 import type { Candle } from "./candles";
 import type { ClauseJson } from "./supabase";
+import { computeDivergenceFeatureSeries } from "./structure";
 
 export type FeatureRow = {
   time: number;
@@ -22,6 +23,8 @@ export type FeatureRow = {
   return_20?: number;
   hour?: number;
   atr_14?: number;
+  bos_divergence_bullish?: number;
+  bos_divergence_bearish?: number;
 };
 
 // EWM with adjust=False: out[i] = alpha*x[i] + (1-alpha)*out[i-1], out[0] = x[0].
@@ -133,7 +136,7 @@ function nyHour(timeSeconds: number): number {
  * for whichever feature needs the longest lookback) have that field left undefined,
  * matching the Python side's `.dropna()`.
  */
-export function computeFeatureSeries(candles: Candle[]): FeatureRow[] {
+export function computeFeatureSeries(candles: Candle[], otherCandles?: Candle[]): FeatureRow[] {
   if (candles.length === 0) return [];
 
   const closes = candles.map((c) => c.close);
@@ -152,6 +155,13 @@ export function computeFeatureSeries(candles: Candle[]): FeatureRow[] {
   const ret5 = returnN(closes, 5);
   const ret20 = returnN(closes, 20);
 
+  // Cross-asset structure divergence (QQQ<->SPY) -- backward-looking only, mirroring
+  // trading_lab/cross_asset.py exactly so a rule using these lights up the chart's
+  // gold signal strip at the same bars the real tradeable feature would be true.
+  const divergence = otherCandles && otherCandles.length > 0
+    ? computeDivergenceFeatureSeries(candles, otherCandles)
+    : null;
+
   return candles.map((c, i) => ({
     time: c.time,
     price_vs_ema200: (c.close - ema200[i]) / ema200[i],
@@ -162,6 +172,8 @@ export function computeFeatureSeries(candles: Candle[]): FeatureRow[] {
     return_20: ret20[i],
     hour: nyHour(c.time),
     atr_14: atr[i],
+    bos_divergence_bullish: divergence ? (divergence.bullish[i] ? 1 : 0) : 0,
+    bos_divergence_bearish: divergence ? (divergence.bearish[i] ? 1 : 0) : 0,
   }));
 }
 

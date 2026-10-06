@@ -25,6 +25,7 @@ import pandas as pd
 from . import db
 from .backtest import BacktestConfig, run_backtest
 from .config import DASHBOARD_URL
+from .cross_asset import PAIRED_INDEX
 from .data import fetch_klines
 from .data_stocks import fetch_bars
 from .discovery import Candidate, Clause
@@ -80,8 +81,22 @@ def interval_to_timedelta(interval: str) -> pd.Timedelta:
     return pd.Timedelta(**{key: n})
 
 
+def _fetch_closed_bars(symbol: str, interval: str, source: str, start: str, end: str, bar_td: pd.Timedelta, now: pd.Timestamp) -> pd.DataFrame:
+    """Fetches a raw OHLCV window and drops the currently-forming bar -- its close
+    hasn't happened yet, so evaluating a clause (or a cross-asset feature) against it
+    would be reading an incomplete candle as if it were final.
+    """
+    raw = fetch_bars(symbol, interval, start, end) if source == "stocks" else fetch_klines(symbol, interval, start, end)
+    if raw.empty:
+        return raw
+    closes_at = raw.index + bar_td
+    return raw[closes_at <= now]
+
+
 def fetch_live_features(symbol: str, interval: str, source: str) -> pd.DataFrame:
-    """Fetches a recent rolling window up to now and builds features on it.
+    """Fetches a recent rolling window up to now and builds features on it, including
+    the paired index's (QQQ<->SPY) data for the cross-asset structure-divergence
+    features, if this symbol has one (see cross_asset.py).
 
     Deliberately bypasses get_candles'/get_stock_candles' Parquet cache -- that cache
     is keyed by the start/end strings, which change every call here (we always want the
@@ -97,18 +112,18 @@ def fetch_live_features(symbol: str, interval: str, source: str) -> pd.DataFrame
     start = (now - pd.Timedelta(days=lookback_days)).isoformat()
     end = now.isoformat()
 
-    raw = fetch_bars(symbol, interval, start, end) if source == "stocks" else fetch_klines(symbol, interval, start, end)
+    raw = _fetch_closed_bars(symbol, interval, source, start, end, bar_td, now)
     if raw.empty:
         return raw
 
-    # Drop the currently-forming bar -- its close hasn't happened yet, so evaluating a
-    # clause against it would be reading an incomplete candle as if it were final.
-    closes_at = raw.index + bar_td
-    raw = raw[closes_at <= now]
-    if raw.empty:
-        return raw
+    other_symbol = PAIRED_INDEX.get(symbol)
+    other_raw = None
+    if other_symbol is not None and source == "stocks":
+        other_raw = _fetch_closed_bars(other_symbol, interval, source, start, end, bar_td, now)
+        if other_raw.empty:
+            other_raw = None
 
-    return build_features(raw)
+    return build_features(raw, other_raw)
 
 
 def evaluate_promotion(forward_stats: TradeStats, test_expectancy_r: float, lower_bound_r: float) -> str:
