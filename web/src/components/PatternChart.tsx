@@ -395,6 +395,15 @@ export function PatternChart({
       chart.timeScale().fitContent();
     }
 
+    // Track the visible range continuously as the user pans/zooms (mouse drag, wheel,
+    // pinch) rather than only sampling it once at teardown -- a rebuild can be triggered
+    // by a live auto-refresh at any arbitrary moment, and relying on a single read at
+    // cleanup time was missing the user's actual current position in practice.
+    const handleVisibleRangeChange = (range: Parameters<Parameters<ReturnType<IChartApi["timeScale"]>["subscribeVisibleTimeRangeChange"]>[0]>[0]) => {
+      if (range) savedRangeRef.current = range as { from: UTCTimestamp; to: UTCTimestamp };
+    };
+    chart.timeScale().subscribeVisibleTimeRangeChange(handleVisibleRangeChange);
+
     const handleResize = () => {
       if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth });
     };
@@ -403,8 +412,7 @@ export function PatternChart({
     return () => {
       window.removeEventListener("resize", handleResize);
       if (showOther) chart.unsubscribeCrosshairMove(handleCrosshairMove);
-      const visible = chart.timeScale().getVisibleRange();
-      if (visible) savedRangeRef.current = visible as { from: UTCTimestamp; to: UTCTimestamp };
+      chart.timeScale().unsubscribeVisibleTimeRangeChange(handleVisibleRangeChange);
       chart.remove();
     };
   }, [
