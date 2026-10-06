@@ -101,13 +101,15 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
   let candles: Awaited<ReturnType<typeof getCandles>> = [];
   let divergenceEvents: DivergenceEvent[] = [];
   let otherIndexCandles: Awaited<ReturnType<typeof getCandles>> = [];
+  let chartStart: Date | null = null;
+  let chartEnd: Date | null = null;
   const otherIndexSymbol: "QQQ" | "SPY" | null = exp.symbol === "QQQ" ? "SPY" : exp.symbol === "SPY" ? "QQQ" : null;
   if (tradeList.length > 0 && exp.source) {
     const entryTimes = tradeList.map((t) => new Date(t.entry_time).getTime());
     const exitTimes = tradeList.map((t) => new Date(t.exit_time).getTime());
     const padMs = 20 * 24 * 60 * 60 * 1000; // 20 days
-    const chartStart = new Date(Math.min(...entryTimes) - padMs);
-    const chartEnd = new Date(Math.min(Math.max(...exitTimes) + padMs, Date.now()));
+    chartStart = new Date(Math.min(...entryTimes) - padMs);
+    chartEnd = new Date(Math.min(Math.max(...exitTimes) + padMs, Date.now()));
     candles = await getCandles(exp.symbol, exp.interval, exp.source, chartStart, chartEnd);
 
     // The paired index's own real candles, shown in a second pane -- seeing the actual
@@ -287,8 +289,10 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
         </SectionHeading>
         <PatternChart
           candles={candles} trades={tradeList} signal={signal} latestTradeLevels={latestTradeLevels}
-          symbol={exp.symbol} otherIndexCandles={otherIndexCandles} otherIndexSymbol={otherIndexSymbol}
+          symbol={exp.symbol} source={exp.source ?? "stocks"} otherIndexCandles={otherIndexCandles} otherIndexSymbol={otherIndexSymbol}
           divergenceEvents={divergenceEvents}
+          chartStartIso={chartStart ? chartStart.toISOString() : null} chartEndIso={chartEnd ? chartEnd.toISOString() : null}
+          interval={exp.interval} clauses={exp.clauses}
         />
       </section>
 
