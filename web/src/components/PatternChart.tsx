@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  createChart, CandlestickSeries, HistogramSeries, LineSeries, createSeriesMarkers, ColorType, LineStyle,
+  createChart, CandlestickSeries, HistogramSeries, createSeriesMarkers, ColorType, LineStyle,
   type IChartApi, type UTCTimestamp,
 } from "lightweight-charts";
 import type { Candle } from "@/lib/candles";
@@ -22,27 +22,25 @@ function resolveCssVar(varExpr: string, fallback: string): string {
 }
 
 type LatestTradeLevels = { entry: number; stop: number; target: number };
-type PercentPoint = { time: number; value: number };
 
 export function PatternChart({
-  candles, trades, signal, latestTradeLevels, qqqSeries, spySeries, divergenceEvents,
+  candles, trades, signal, latestTradeLevels, symbol, otherIndexCandles, otherIndexSymbol, divergenceEvents,
 }: {
   candles: Candle[];
   trades: ExperimentTrade[];
   signal?: boolean[];
   latestTradeLevels?: LatestTradeLevels | null;
-  qqqSeries?: PercentPoint[];
-  spySeries?: PercentPoint[];
+  symbol: string;
+  otherIndexCandles?: Candle[];
+  otherIndexSymbol?: "QQQ" | "SPY" | null;
   divergenceEvents?: DivergenceEvent[];
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const [showQQQ, setShowQQQ] = useState(true);
-  const [showSPY, setShowSPY] = useState(true);
+  const [showOtherIndex, setShowOtherIndex] = useState(true);
   const [showDivergence, setShowDivergence] = useState(true);
 
-  const hasQQQ = !!qqqSeries && qqqSeries.length > 0;
-  const hasSPY = !!spySeries && spySeries.length > 0;
+  const hasOtherIndex = !!otherIndexCandles && otherIndexCandles.length > 0 && !!otherIndexSymbol;
   const hasDivergence = !!divergenceEvents && divergenceEvents.length > 0;
 
   useEffect(() => {
@@ -56,19 +54,22 @@ export function PatternChart({
     const blue = resolveCssVar(CHART_BLUE, "#3b82f6");
     const teal = resolveCssVar(CHART_TEAL, "#14b8a6");
 
+    const showOther = hasOtherIndex && showOtherIndex;
+    const otherPaneIndex = 2; // pane 0 = signal strip, pane 1 = this symbol's candles
+
     const chart = createChart(containerRef.current, {
       layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: textMuted },
       grid: { vertLines: { color: gridline }, horzLines: { color: gridline } },
       width: containerRef.current.clientWidth,
-      height: 400,
+      height: showOther ? 620 : 400,
       timeScale: { timeVisible: true, secondsVisible: false },
     });
     chartRef.current = chart;
 
-    // Main candlesticks live in pane 1; the signal strip (added below) takes pane 0,
-    // so it renders as a separate, shorter row parallel to and just above the candles --
-    // distinct from the trade markers, which only mark actual entries, not every bar
-    // where the rule's raw condition held true.
+    // This symbol's candlesticks live in pane 1; the signal strip (added below) takes
+    // pane 0, so it renders as a separate, shorter row parallel to and just above the
+    // candles -- distinct from the trade markers, which only mark actual entries, not
+    // every bar where the rule's raw condition held true.
     const series = chart.addSeries(
       CandlestickSeries,
       { upColor: good, downColor: bad, borderVisible: false, wickUpColor: good, wickDownColor: bad },
@@ -88,21 +89,25 @@ export function PatternChart({
       text: `${t.r_multiple > 0 ? "+" : ""}${t.r_multiple.toFixed(2)}R`,
     }));
 
-    // Structure divergence markers: QQQ broke a swing high/low without SPY confirming
-    // it (or vice versa) around the same time -- a circle, distinct from the arrow
-    // trade markers, colored to match whichever index's overlay line led the break.
-    const divergenceMarkers =
+    // Structure divergence markers: whichever index broke a swing high/low without the
+    // other confirming it gets a circle marker ON THAT INDEX'S OWN candles -- this
+    // symbol's pane shows markers for breaks THIS symbol led, the other index's pane
+    // (below) shows markers for breaks IT led, so each pane's markers sit on the real
+    // candles that actually broke structure instead of guessing which chart to put them on.
+    const thisSymbolDivergenceMarkers =
       showDivergence && divergenceEvents
-        ? divergenceEvents.map((e) => ({
-            time: e.time as UTCTimestamp,
-            position: (e.direction === "bullish" ? "belowBar" : "aboveBar") as "belowBar" | "aboveBar",
-            color: e.leader === "QQQ" ? blue : teal,
-            shape: "circle" as const,
-            text: `${e.leader} BOS, ${e.follower} didn't confirm`,
-          }))
+        ? divergenceEvents
+            .filter((e) => e.leader === symbol)
+            .map((e) => ({
+              time: e.time as UTCTimestamp,
+              position: (e.direction === "bullish" ? "belowBar" : "aboveBar") as "belowBar" | "aboveBar",
+              color: amber,
+              shape: "circle" as const,
+              text: `${e.leader} broke structure, ${e.follower} didn't confirm`,
+            }))
         : [];
 
-    const markers = [...tradeMarkers, ...divergenceMarkers].sort((a, b) => a.time - b.time);
+    const markers = [...tradeMarkers, ...thisSymbolDivergenceMarkers].sort((a, b) => a.time - b.time);
     createSeriesMarkers(series, markers);
 
     if (latestTradeLevels) {
@@ -131,33 +136,47 @@ export function PatternChart({
           time: c.time as UTCTimestamp, value: signal[i] ? 1 : 0, color: signal[i] ? amber : "transparent",
         }))
       );
-      const panes = chart.panes();
-      if (panes.length >= 2) {
-        panes[0].setStretchFactor(0.15);
-        panes[1].setStretchFactor(0.85);
-      }
     }
 
-    // Index overlay: Nasdaq 100 (QQQ) / S&P 500 (SPY), normalized to % change so they're
-    // directly comparable to each other and to this pattern's own candles regardless of
-    // price scale. Shares the candlestick pane (so they visually "overlap" it, as asked
-    // for) but gets its own right-side price scale -- a few percent of movement would be
-    // an invisible sliver against real price values on the same axis.
-    if (hasQQQ && showQQQ) {
-      const qqq = chart.addSeries(
-        LineSeries,
-        { color: blue, lineWidth: 2, priceScaleId: "index-overlay", title: "QQQ %", lastValueVisible: false, priceLineVisible: false },
-        1,
+    // The paired index's own real candles in a third pane -- actual OHLC, not a
+    // normalized line, so the same swing highs/lows a trader would eyeball on this
+    // symbol's chart are directly visible on the other index's chart too (confirmed
+    // directly: a normalized % line overlay sharing one pane was reported as confusing).
+    if (showOther) {
+      const otherSeries = chart.addSeries(
+        CandlestickSeries,
+        { upColor: blue, downColor: teal, borderVisible: false, wickUpColor: blue, wickDownColor: teal },
+        otherPaneIndex,
       );
-      qqq.setData(qqqSeries!.map((p) => ({ time: p.time as UTCTimestamp, value: p.value })));
+      otherSeries.setData(
+        otherIndexCandles!.map((c) => ({
+          time: c.time as UTCTimestamp, open: c.open, high: c.high, low: c.low, close: c.close,
+        }))
+      );
+
+      const otherDivergenceMarkers =
+        showDivergence && divergenceEvents
+          ? divergenceEvents
+              .filter((e) => e.leader === otherIndexSymbol)
+              .map((e) => ({
+                time: e.time as UTCTimestamp,
+                position: (e.direction === "bullish" ? "belowBar" : "aboveBar") as "belowBar" | "aboveBar",
+                color: amber,
+                shape: "circle" as const,
+                text: `${e.leader} broke structure, ${e.follower} didn't confirm`,
+              }))
+          : [];
+      createSeriesMarkers(otherSeries, otherDivergenceMarkers);
     }
-    if (hasSPY && showSPY) {
-      const spy = chart.addSeries(
-        LineSeries,
-        { color: teal, lineWidth: 2, priceScaleId: "index-overlay", title: "SPY %", lastValueVisible: false, priceLineVisible: false },
-        1,
-      );
-      spy.setData(spySeries!.map((p) => ({ time: p.time as UTCTimestamp, value: p.value })));
+
+    const panes = chart.panes();
+    if (showOther && panes.length >= 3) {
+      panes[0].setStretchFactor(0.12);
+      panes[1].setStretchFactor(0.55);
+      panes[2].setStretchFactor(0.33);
+    } else if (panes.length >= 2) {
+      panes[0].setStretchFactor(0.15);
+      panes[1].setStretchFactor(0.85);
     }
 
     chart.timeScale().fitContent();
@@ -171,7 +190,7 @@ export function PatternChart({
       window.removeEventListener("resize", handleResize);
       chart.remove();
     };
-  }, [candles, trades, signal, latestTradeLevels, qqqSeries, spySeries, showQQQ, showSPY, hasQQQ, hasSPY, divergenceEvents, showDivergence]);
+  }, [candles, trades, signal, latestTradeLevels, symbol, otherIndexCandles, otherIndexSymbol, hasOtherIndex, showOtherIndex, divergenceEvents, showDivergence]);
 
   if (candles.length === 0) {
     return (
@@ -183,26 +202,18 @@ export function PatternChart({
 
   return (
     <div>
-      {(hasQQQ || hasSPY || hasDivergence) && (
+      {(hasOtherIndex || hasDivergence) && (
         <div className="flex items-center gap-4 mb-2 text-xs" style={{ color: TEXT_SECONDARY }}>
-          {hasQQQ && (
+          {hasOtherIndex && (
             <label className="flex items-center gap-1.5 cursor-pointer select-none">
-              <input type="checkbox" checked={showQQQ} onChange={(e) => setShowQQQ(e.target.checked)} />
-              <span className="inline-block h-0.5 w-3" style={{ backgroundColor: "var(--tl-chart-blue)" }} />
-              QQQ (Nasdaq 100)
-            </label>
-          )}
-          {hasSPY && (
-            <label className="flex items-center gap-1.5 cursor-pointer select-none">
-              <input type="checkbox" checked={showSPY} onChange={(e) => setShowSPY(e.target.checked)} />
-              <span className="inline-block h-0.5 w-3" style={{ backgroundColor: "var(--tl-chart-teal)" }} />
-              SPY (S&amp;P 500)
+              <input type="checkbox" checked={showOtherIndex} onChange={(e) => setShowOtherIndex(e.target.checked)} />
+              {otherIndexSymbol} candles ({otherIndexSymbol === "QQQ" ? "Nasdaq 100" : "S&P 500"})
             </label>
           )}
           {hasDivergence && (
             <label className="flex items-center gap-1.5 cursor-pointer select-none" title="One index broke a recent swing high/low and the other didn't confirm it around the same time">
               <input type="checkbox" checked={showDivergence} onChange={(e) => setShowDivergence(e.target.checked)} />
-              <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "var(--tl-chart-blue)" }} />
+              <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: "var(--tl-chart-amber)" }} />
               Structure divergence ({divergenceEvents!.length})
             </label>
           )}

@@ -12,7 +12,7 @@ import { RobustnessScore } from "@/components/RobustnessScore";
 import { BannerBackground } from "@/components/BannerBackground";
 import { PatternChart } from "@/components/PatternChart";
 import { ForwardStatusBadge, type ForwardStatus } from "@/components/ForwardStatusBadge";
-import { getCandles, toPercentChangeSeries } from "@/lib/candles";
+import { getCandles } from "@/lib/candles";
 import { detectDivergences, type DivergenceEvent } from "@/lib/structure";
 import { fetchAllRows } from "@/lib/fetchAll";
 import { computeFeatureSeries, evaluateSignal } from "@/lib/indicators";
@@ -99,10 +99,9 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
   // performance is excluded, it's optimistic by construction" reasoning used
   // everywhere else on this page, and keeps the candle fetch bounded.
   let candles: Awaited<ReturnType<typeof getCandles>> = [];
-  let qqqSeries: { time: number; value: number }[] = [];
-  let spySeries: { time: number; value: number }[] = [];
   let divergenceEvents: DivergenceEvent[] = [];
   let otherIndexCandles: Awaited<ReturnType<typeof getCandles>> = [];
+  const otherIndexSymbol: "QQQ" | "SPY" | null = exp.symbol === "QQQ" ? "SPY" : exp.symbol === "SPY" ? "QQQ" : null;
   if (tradeList.length > 0 && exp.source) {
     const entryTimes = tradeList.map((t) => new Date(t.entry_time).getTime());
     const exitTimes = tradeList.map((t) => new Date(t.exit_time).getTime());
@@ -111,26 +110,24 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
     const chartEnd = new Date(Math.min(Math.max(...exitTimes) + padMs, Date.now()));
     candles = await getCandles(exp.symbol, exp.interval, exp.source, chartStart, chartEnd);
 
-    // Index overlay: Nasdaq 100 (QQQ) and S&P 500 (SPY), normalized to % change so
-    // they're comparable on the same chart regardless of this experiment's own symbol
-    // or absolute price level. Reuse the already-fetched candles when this experiment
-    // IS QQQ or SPY instead of re-fetching the identical data.
-    const [qqqCandles, spyCandles] = await Promise.all([
-      exp.symbol === "QQQ" ? Promise.resolve(candles) : getCandles("QQQ", exp.interval, "stocks", chartStart, chartEnd),
-      exp.symbol === "SPY" ? Promise.resolve(candles) : getCandles("SPY", exp.interval, "stocks", chartStart, chartEnd),
-    ]);
-    qqqSeries = toPercentChangeSeries(qqqCandles);
-    spySeries = toPercentChangeSeries(spyCandles);
+    // The paired index's own real candles, shown in a second pane -- seeing the actual
+    // swing highs/lows on both charts (not a normalized line) is what makes a structure
+    // break visually legible, per direct feedback that the line-overlay version was
+    // confusing. Reuse the already-fetched candles when this experiment IS QQQ or SPY
+    // instead of re-fetching the identical data.
+    otherIndexCandles = otherIndexSymbol
+      ? await getCandles(otherIndexSymbol, exp.interval, "stocks", chartStart, chartEnd)
+      : [];
 
     // Structure divergence: QQQ breaks a recent swing high/low and SPY doesn't confirm
     // it (or vice versa) around the same time -- a pro trader's observation that this
     // has preceded a strong directional run. Flagged for tracking/visual confirmation;
     // not yet wired into discovery/backtesting, which only looks at one symbol at a time.
-    divergenceEvents = detectDivergences(qqqCandles, spyCandles);
-
-    // The signal strip below needs the OTHER index's candles too, for any rule using
-    // bos_divergence_bullish/bearish -- QQQ's other is SPY and vice versa.
-    otherIndexCandles = exp.symbol === "QQQ" ? spyCandles : exp.symbol === "SPY" ? qqqCandles : [];
+    if (otherIndexSymbol) {
+      const qqqCandles = exp.symbol === "QQQ" ? candles : otherIndexCandles;
+      const spyCandles = exp.symbol === "SPY" ? candles : otherIndexCandles;
+      divergenceEvents = detectDivergences(qqqCandles, spyCandles);
+    }
   }
 
   // Signal overlay: where the rule's raw boolean condition was historically true, not
@@ -285,12 +282,13 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
           Pattern on the chart
           <span className="font-normal normal-case" style={{ color: TEXT_MUTED, opacity: 0.8 }}>
             (validation + test window -- gold strip above shows when the rule&apos;s condition was true;
-            trade markers show where it actually entered)
+            trade markers show where it actually entered; second pane is the paired index&apos;s own candles)
           </span>
         </SectionHeading>
         <PatternChart
           candles={candles} trades={tradeList} signal={signal} latestTradeLevels={latestTradeLevels}
-          qqqSeries={qqqSeries} spySeries={spySeries} divergenceEvents={divergenceEvents}
+          symbol={exp.symbol} otherIndexCandles={otherIndexCandles} otherIndexSymbol={otherIndexSymbol}
+          divergenceEvents={divergenceEvents}
         />
       </section>
 
