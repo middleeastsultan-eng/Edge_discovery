@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from trading_lab.cross_asset import compute_divergence_features
+from trading_lab.cross_asset import compute_divergence_features, detect_latest_divergence
 
 
 def _flat_df(n: int, price: float = 100.0, freq: str = "1h") -> pd.DataFrame:
@@ -78,3 +78,34 @@ def test_output_is_always_zero_or_one():
     features = compute_divergence_features(this_df, other_df)
     assert features["bos_divergence_bullish"].isin([0.0, 1.0]).all()
     assert features["bos_divergence_bearish"].isin([0.0, 1.0]).all()
+
+
+def test_detect_latest_divergence_finds_a_fresh_qqq_breakout():
+    # QQQ breaks out right at the end of the series; SPY never does. The break-of-
+    # structure event itself fires ~1 bar after the trend starts (confirmed directly),
+    # so breakout_at=n-4 keeps the event comfortably inside the 5-bar recency window.
+    n = 100
+    qqq = _breakout_df(n, breakout_at=n - 4)
+    spy = _flat_df(n)
+    result = detect_latest_divergence(qqq, spy)
+    assert result is not None
+    assert result["leader"] == "QQQ"
+    assert result["follower"] == "SPY"
+    assert result["direction"] == "bullish"
+
+
+def test_detect_latest_divergence_none_when_nothing_just_happened():
+    n = 100
+    qqq = _flat_df(n)
+    spy = _flat_df(n)
+    assert detect_latest_divergence(qqq, spy) is None
+
+
+def test_detect_latest_divergence_none_when_old_breakout_has_scrolled_out_of_window():
+    # QQQ broke out long ago (well outside the recency window) -- shouldn't still
+    # read as "just happened."
+    n = 150
+    qqq = _breakout_df(n, breakout_at=20)
+    spy = _flat_df(n)
+    result = detect_latest_divergence(qqq, spy)
+    assert result is None

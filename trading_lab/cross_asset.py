@@ -104,3 +104,37 @@ def compute_divergence_features(
         },
         index=df.index,
     )
+
+
+def detect_latest_divergence(
+    qqq_df: pd.DataFrame, spy_df: pd.DataFrame, lookback: int = 5, window: int = 5,
+) -> dict | None:
+    """Checks whether the MOST RECENT closed bar shows a live divergence for either
+    symbol -- used for a standalone "this just happened" alert, independent of whether
+    any discovered pattern's rule happens to use bos_divergence_bullish/bearish.
+    Returns None if neither symbol diverged on the latest bar, else a dict describing
+    which symbol led, which direction, and the bar's timestamp.
+
+    Both DataFrames should already be recent-bars-only (the caller's job, e.g. via
+    live.py's own bar-fetching conventions) -- this only looks at whatever their last
+    shared timestamp is.
+    """
+    common_idx = qqq_df.index.intersection(spy_df.index)
+    if len(common_idx) == 0:
+        return None
+    qqq_aligned = qqq_df.loc[common_idx]
+    spy_aligned = spy_df.loc[common_idx]
+
+    qqq_divergence = compute_divergence_features(qqq_aligned, spy_aligned, lookback, window)
+    spy_divergence = compute_divergence_features(spy_aligned, qqq_aligned, lookback, window)
+
+    latest_time = common_idx[-1]
+    if bool(qqq_divergence["bos_divergence_bullish"].iloc[-1]):
+        return {"leader": "QQQ", "follower": "SPY", "direction": "bullish", "bar_time": latest_time}
+    if bool(qqq_divergence["bos_divergence_bearish"].iloc[-1]):
+        return {"leader": "QQQ", "follower": "SPY", "direction": "bearish", "bar_time": latest_time}
+    if bool(spy_divergence["bos_divergence_bullish"].iloc[-1]):
+        return {"leader": "SPY", "follower": "QQQ", "direction": "bullish", "bar_time": latest_time}
+    if bool(spy_divergence["bos_divergence_bearish"].iloc[-1]):
+        return {"leader": "SPY", "follower": "QQQ", "direction": "bearish", "bar_time": latest_time}
+    return None

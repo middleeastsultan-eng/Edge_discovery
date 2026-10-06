@@ -1,0 +1,33 @@
+name: Structure Divergence Check
+
+# Standalone check: did QQQ or SPY just break structure without the other confirming?
+# Independent of any discovered pattern -- a single global job (not a per-symbol
+# matrix), since this is always exactly the two tracked indices compared to each other.
+on:
+  schedule:
+    - cron: "8,23,38,53 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  divergence-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - run: python run_divergence_check.py --interval 5Min
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}

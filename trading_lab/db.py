@@ -174,6 +174,23 @@ CREATE TABLE IF NOT EXISTS forward_validation_history (
 CREATE INDEX IF NOT EXISTS idx_forward_validation_history_experiment_id ON forward_validation_history(experiment_id);
 ALTER TABLE forward_validation_history ENABLE ROW LEVEL SECURITY;
 
+-- One row per standalone live QQQ/SPY structure-divergence detection (see
+-- cross_asset.detect_latest_divergence) -- independent of any discovered pattern's
+-- rule; this is "did one index just break structure without the other confirming,"
+-- checked directly, not only as an input feature some rule happens to use. UNIQUE on
+-- (leader, direction, bar_time) so the same bar's divergence never alerts twice.
+CREATE TABLE IF NOT EXISTS structure_divergence_alerts (
+    id SERIAL PRIMARY KEY,
+    leader TEXT NOT NULL,
+    follower TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    bar_time TIMESTAMPTZ NOT NULL,
+    sent_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (leader, direction, bar_time)
+);
+CREATE INDEX IF NOT EXISTS idx_structure_divergence_alerts_sent_at ON structure_divergence_alerts(sent_at);
+ALTER TABLE structure_divergence_alerts ENABLE ROW LEVEL SECURITY;
+
 -- Single-row remote control for the local multiprocessing research loop (run_overnight.py).
 -- The dashboard writes here; the local script polls it once per round to decide how many
 -- worker processes to run and whether to pause. id is always 1 -- not a history, a live knob.
@@ -629,6 +646,42 @@ def record_alert_if_new(experiment_id: int, bar_time, entry_price: float | None 
             is_new = cur.fetchone() is not None
         conn.commit()
     return is_new
+
+
+def record_divergence_alert_if_new(leader: str, follower: str, direction: str, bar_time) -> bool:
+    """Same dedup pattern as record_alert_if_new: True (and logs it) only the first
+    time this exact (leader, direction, bar_time) divergence is seen, so a live check
+    that runs every few minutes never re-alerts the same bar's divergence repeatedly.
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO structure_divergence_alerts (leader, follower, direction, bar_time)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (leader, direction, bar_time) DO NOTHING
+                RETURNING id
+                """,
+                (leader, follower, direction, bar_time),
+            )
+            is_new = cur.fetchone() is not None
+        conn.commit()
+    return is_new
+
+
+def get_recent_divergence_alerts(limit: int = 20) -> list[dict]:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT leader, follower, direction, bar_time, sent_at FROM structure_divergence_alerts "
+                "ORDER BY bar_time DESC LIMIT %s",
+                (limit,),
+            )
+            rows = cur.fetchall()
+    return [
+        {"leader": r[0], "follower": r[1], "direction": r[2], "bar_time": r[3], "sent_at": r[4]}
+        for r in rows
+    ]
 
 
 # Arbitrary but fixed 64-bit key for the paper-portfolio advisory lock -- any constant
