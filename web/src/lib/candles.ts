@@ -53,8 +53,28 @@ async function fetchCoinbaseNative(symbol: string, interval: string, start: Date
 
   // Coinbase candle row shape: [time, low, high, open, close, volume]
   const candles = rows.map((r) => ({ time: r[0], low: r[1], high: r[2], open: r[3], close: r[4] }));
-  candles.sort((a, b) => a.time - b.time);
-  return candles;
+  return sortAndDedupe(candles);
+}
+
+// Coinbase's start/end range is inclusive on both ends, so each pagination page's
+// boundary candle gets fetched twice (as the last row of one page and the first row of
+// the next) -- confirmed directly (83 duplicate timestamps on a real ~25k-candle fetch).
+// lightweight-charts requires strictly unique ascending timestamps; a duplicate is what
+// was throwing "Value is null" in its internal renderer. Same fix trading_lab/data.py
+// already applies on the Python side (`duplicated(keep="first")`). Applied to the
+// Alpaca path too, defensively, even though its page_token-based pagination is less
+// prone to this specific failure mode.
+function sortAndDedupe(candles: Candle[]): Candle[] {
+  const sorted = [...candles].sort((a, b) => a.time - b.time);
+  const deduped: Candle[] = [];
+  let lastTime: number | null = null;
+  for (const c of sorted) {
+    if (c.time !== lastTime) {
+      deduped.push(c);
+      lastTime = c.time;
+    }
+  }
+  return deduped;
 }
 
 function resampleCandles(candles: Candle[], bucketSeconds: number): Candle[] {
@@ -116,8 +136,7 @@ async function fetchAlpacaCandles(symbol: string, interval: string, start: Date,
     pageToken = data.next_page_token;
   } while (pageToken);
 
-  rows.sort((a, b) => a.time - b.time);
-  return rows;
+  return sortAndDedupe(rows);
 }
 
 /** Historical candles for symbol/interval between start and end (inclusive), sourced
