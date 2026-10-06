@@ -378,6 +378,10 @@ export function PatternChart({
             onMouseLeave={() => applyFocus(null)}
           >
             <input type="checkbox" checked={showPrimaryIndex} onChange={(e) => setShowPrimaryIndex(e.target.checked)} />
+            <span className="inline-flex gap-0.5" aria-hidden title="Up / down candle color for this symbol">
+              <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: "var(--tl-status-good)" }} />
+              <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: "var(--tl-status-critical)" }} />
+            </span>
             {symbol} candles
           </label>
           {hasOtherIndex && (
@@ -387,6 +391,10 @@ export function PatternChart({
               onMouseLeave={() => applyFocus(null)}
             >
               <input type="checkbox" checked={showOtherIndex} onChange={(e) => setShowOtherIndex(e.target.checked)} />
+              <span className="inline-flex gap-0.5" aria-hidden title="Up / down candle color for this symbol">
+                <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: "var(--tl-chart-blue)" }} />
+                <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: "var(--tl-chart-teal)" }} />
+              </span>
               {otherIndexSymbol} candles ({otherIndexSymbol === "QQQ" ? "Nasdaq 100" : "S&P 500"})
             </label>
           )}
