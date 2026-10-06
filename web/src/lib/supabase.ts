@@ -25,6 +25,10 @@ export type TradeStats = {
   avg_loss_r: number;
 };
 
+// Mirrors trading_lab/discovery.py's Clause dataclass as stored in the experiments.clauses
+// JSONB column (dataclasses.asdict output).
+export type ClauseJson = { feature: string; op: ">" | "<"; value: number };
+
 export type Experiment = {
   id: number;
   created_at: string;
@@ -35,7 +39,7 @@ export type Experiment = {
   end_date: string;
   rule: string;
   plain_english: string | null;
-  clauses: unknown;
+  clauses: ClauseJson[];
   discovery_stats: TradeStats & { score?: number; rule?: string };
   validation_stats: TradeStats | null;
   test_stats: TradeStats | null;
@@ -147,6 +151,18 @@ export type ForwardValidation = {
   forward_stats: TradeStats | null;
   promoted_at: string | null;
   updated_at: string;
+};
+
+// One row per check_pattern() call -- a real time series of a pattern's forward record,
+// used to compute how long a promoted pattern has survived and whether it was ever
+// demoted back to tracking. See trading_lab/db.py's record_forward_check.
+export type ForwardValidationHistoryRow = {
+  experiment_id: number;
+  checked_at: string;
+  status: "tracking" | "promoted";
+  n_trades: number;
+  expectancy_r: number;
+  lower_bound_r: number;
 };
 
 export type ForwardSignalAlert = {

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, FlaskConical, Radio, Wallet, ShieldCheck } from "lucide-react";
 import { supabase, type Experiment, type ForwardValidation, type PaperAccount } from "@/lib/supabase";
+import { fetchAllRows } from "@/lib/fetchAll";
 import { StatTile } from "@/components/StatTile";
 import { getHeroImage } from "@/lib/pexels";
 import { formatPct, formatUSD } from "@/lib/format";
@@ -19,16 +20,21 @@ const CTAS = [
 ];
 
 export default async function WelcomePage() {
-  const [heroImage, { data: expData }, { data: fvData }, { data: paperAccountData }] = await Promise.all([
+  const [heroImage, experiments, forwardStatuses, { data: paperAccountData }] = await Promise.all([
     getHeroImage("stock market data screen"),
-    supabase.from("experiments").select("id, robustness_score"),
-    supabase.from("forward_validation").select("status"),
+    // Full table, not a capped page -- "Total experiments" must reflect the real count,
+    // not however many fit under PostgREST's 1000-row default (see fetchAll.ts).
+    fetchAllRows<Pick<Experiment, "id" | "robustness_score">>((from, to) =>
+      supabase.from("experiments").select("id, robustness_score").order("id", { ascending: true }).range(from, to),
+    ),
+    fetchAllRows<Pick<ForwardValidation, "status">>((from, to) =>
+      supabase.from("forward_validation").select("experiment_id, status").order("experiment_id", { ascending: true }).range(from, to),
+    ),
     supabase.from("paper_account").select("equity").eq("id", 1).single(),
   ]);
 
-  const experiments = (expData ?? []) as Pick<Experiment, "id" | "robustness_score">[];
   const tracked = experiments.filter((e) => (e.robustness_score?.total ?? 0) >= TRACKING_MIN_SCORE);
-  const promotedCount = (fvData ?? []).filter((fv) => (fv as ForwardValidation).status === "promoted").length;
+  const promotedCount = forwardStatuses.filter((fv) => fv.status === "promoted").length;
   const paperAccount = (paperAccountData ?? { equity: STARTING_EQUITY }) as Pick<PaperAccount, "equity">;
   const paperReturnPct = paperAccount.equity / STARTING_EQUITY - 1;
 

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { FlaskConical, CheckCircle2, Percent, Tags, ArrowRight } from "lucide-react";
 import { supabase, type Experiment } from "@/lib/supabase";
+import { fetchAllRows } from "@/lib/fetchAll";
 import { verdict } from "@/lib/evaluate";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StatTile } from "@/components/StatTile";
@@ -11,12 +12,32 @@ import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, BORDER_SOFT,
 
 export const dynamic = "force-dynamic";
 
+// Stat tiles and the verdict distribution must reflect every experiment ever run, not
+// just the page of rows shown in the table below -- otherwise "Total experiments" (and
+// everything derived from it) silently freezes at the table's row limit once the real
+// count grows past it. verdict() only ever looks at validation_stats/test_stats'
+// n_trades and expectancy_r, so this pulls just those two JSONB columns (plus symbol)
+// for the whole table -- far cheaper than select("*") across every experiment.
+type VerdictFields = Pick<Experiment, "id" | "symbol" | "validation_stats" | "test_stats">;
+
 export default async function ExperimentsPage() {
-  const { data, error } = await supabase
-    .from("experiments")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(100);
+  let allExperiments: VerdictFields[];
+  try {
+    allExperiments = await fetchAllRows<VerdictFields>((from, to) =>
+      supabase.from("experiments").select("id, symbol, validation_stats, test_stats").order("id", { ascending: true }).range(from, to),
+    );
+  } catch (err) {
+    return (
+      <div
+        className="rounded-lg px-4 py-3 text-sm"
+        style={{ border: `1px solid ${tint(STATUS_CRITICAL, 25)}`, backgroundColor: tint(STATUS_CRITICAL, 10), color: STATUS_CRITICAL }}
+      >
+        Failed to load experiments: {err instanceof Error ? err.message : String(err)}
+      </div>
+    );
+  }
+
+  const { data, error } = await supabase.from("experiments").select("*").order("created_at", { ascending: false }).limit(100);
 
   if (error) {
     return (
@@ -30,9 +51,12 @@ export default async function ExperimentsPage() {
   }
 
   const experiments = (data ?? []) as Experiment[];
-  const passing = experiments.filter((e) => verdict(e) === "pass").length;
-  const failing = experiments.filter((e) => verdict(e) === "fail").length;
-  const insufficient = experiments.filter((e) => verdict(e) === "insufficient").length;
+  const totalExperiments = allExperiments.length;
+  const allVerdicts = allExperiments.map((e) => verdict(e as Experiment));
+  const passing = allVerdicts.filter((v) => v === "pass").length;
+  const failing = allVerdicts.filter((v) => v === "fail").length;
+  const insufficient = allVerdicts.filter((v) => v === "insufficient").length;
+  const symbolsCovered = new Set(allExperiments.map((e) => e.symbol)).size;
 
   return (
     <div className="space-y-8">
@@ -52,7 +76,7 @@ export default async function ExperimentsPage() {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatTile label="Total experiments" value={String(experiments.length)} icon={FlaskConical} />
+        <StatTile label="Total experiments" value={String(totalExperiments)} icon={FlaskConical} />
         <StatTile
           label="Survived validation"
           value={String(passing)}
@@ -61,17 +85,13 @@ export default async function ExperimentsPage() {
         />
         <StatTile
           label="Pass rate"
-          value={experiments.length ? formatPct(passing / experiments.length) : "—"}
+          value={totalExperiments ? formatPct(passing / totalExperiments) : "—"}
           icon={Percent}
         />
-        <StatTile
-          label="Symbols covered"
-          value={String(new Set(experiments.map((e) => e.symbol)).size)}
-          icon={Tags}
-        />
+        <StatTile label="Symbols covered" value={String(symbolsCovered)} icon={Tags} />
       </div>
 
-      {experiments.length > 0 && (
+      {totalExperiments > 0 && (
         <div className="rounded-2xl p-4 shadow-sm" style={{ backgroundColor: SURFACE, border: `1px solid ${BORDER}` }}>
           <h2 className="text-xs mb-3" style={{ color: TEXT_MUTED }}>
             Verdict distribution
@@ -86,7 +106,7 @@ export default async function ExperimentsPage() {
         </div>
       )}
 
-      {experiments.length === 0 ? (
+      {totalExperiments === 0 ? (
         <div
           className="rounded-2xl px-4 py-10 text-center text-sm"
           style={{ border: `1px solid ${BORDER}`, backgroundColor: SURFACE, color: TEXT_MUTED }}
@@ -95,7 +115,13 @@ export default async function ExperimentsPage() {
           <code style={{ color: TEXT_SECONDARY }}>python run_research.py</code> to generate the first one.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-2xl shadow-sm" style={{ border: `1px solid ${BORDER}` }}>
+        <div className="space-y-2">
+          {totalExperiments > experiments.length && (
+            <p className="text-xs" style={{ color: TEXT_MUTED }}>
+              Showing the latest {experiments.length} of {totalExperiments} experiments.
+            </p>
+          )}
+          <div className="overflow-x-auto rounded-2xl shadow-sm" style={{ border: `1px solid ${BORDER}` }}>
           <table className="w-full text-sm">
             <thead>
               <tr
@@ -178,6 +204,7 @@ export default async function ExperimentsPage() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

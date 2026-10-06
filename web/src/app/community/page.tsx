@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight, MessageSquare, ExternalLink } from "lucide-react";
 import { supabase, type RedditStrategy, type Experiment } from "@/lib/supabase";
+import { fetchAllRows } from "@/lib/fetchAll";
 import { StatTile } from "@/components/StatTile";
 import { BannerBackground } from "@/components/BannerBackground";
 import { formatDateTime, formatNum } from "@/lib/format";
@@ -33,6 +34,23 @@ function StatusBadge({ status }: { status: Status }) {
 }
 
 export default async function CommunityPage() {
+  // "Posts collected"/"Testable"/"Not testable" must count every scanned post, not just
+  // the latest 100 shown in the list below -- the Reddit scan runs every 6h and will
+  // outgrow that list quickly (see fetchAll.ts for why an unbounded .select() alone
+  // isn't safe either).
+  let allStrategies: Pick<RedditStrategy, "extraction_status">[];
+  try {
+    allStrategies = await fetchAllRows<Pick<RedditStrategy, "id" | "extraction_status">>((from, to) =>
+      supabase.from("reddit_strategies").select("id, extraction_status").order("id", { ascending: true }).range(from, to),
+    );
+  } catch (err) {
+    return (
+      <div className="rounded-lg px-4 py-3 text-sm" style={{ border: `1px solid ${BORDER}`, color: TEXT_MUTED }}>
+        Failed to load: {err instanceof Error ? err.message : String(err)}
+      </div>
+    );
+  }
+
   const [{ data: strategyData, error }, { data: expData }] = await Promise.all([
     supabase.from("reddit_strategies").select("*").order("fetched_at", { ascending: false }).limit(100),
     supabase.from("experiments").select("id, symbol, interval, robustness_score, reddit_strategy_id").eq("origin", "reddit"),
@@ -56,8 +74,8 @@ export default async function CommunityPage() {
     experimentsByStrategy.set(exp.reddit_strategy_id, list);
   }
 
-  const testable = strategies.filter((s) => s.extraction_status === "testable").length;
-  const notTestable = strategies.filter((s) => s.extraction_status === "not_testable").length;
+  const testable = allStrategies.filter((s) => s.extraction_status === "testable").length;
+  const notTestable = allStrategies.filter((s) => s.extraction_status === "not_testable").length;
 
   return (
     <div className="space-y-8">
@@ -85,7 +103,7 @@ export default async function CommunityPage() {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <StatTile label="Posts collected" value={String(strategies.length)} icon={MessageSquare} />
+        <StatTile label="Posts collected" value={String(allStrategies.length)} icon={MessageSquare} />
         <StatTile label="Testable" value={String(testable)} tone={testable > 0 ? "good" : "neutral"} icon={ArrowUpRight} />
         <StatTile label="Not testable (reported honestly)" value={String(notTestable)} icon={MessageSquare} />
       </div>
@@ -98,7 +116,13 @@ export default async function CommunityPage() {
           No posts collected yet — the Reddit scan runs every 6 hours.
         </div>
       ) : (
-        <div className="rounded-2xl shadow-sm divide-y" style={{ border: `1px solid ${BORDER}`, borderColor: BORDER }}>
+        <div className="space-y-2">
+          {allStrategies.length > strategies.length && (
+            <p className="text-xs" style={{ color: TEXT_MUTED }}>
+              Showing the latest {strategies.length} of {allStrategies.length} posts.
+            </p>
+          )}
+          <div className="rounded-2xl shadow-sm divide-y" style={{ border: `1px solid ${BORDER}`, borderColor: BORDER }}>
           {strategies.map((s) => {
             const results = experimentsByStrategy.get(s.id) ?? [];
             return (
@@ -145,6 +169,7 @@ export default async function CommunityPage() {
               </div>
             );
           })}
+          </div>
         </div>
       )}
     </div>

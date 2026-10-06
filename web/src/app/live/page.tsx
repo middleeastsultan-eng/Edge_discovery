@@ -1,9 +1,15 @@
 import Link from "next/link";
-import { Radio, ShieldCheck, Activity, Bell, ArrowRight, Wallet, TrendingDown, Percent } from "lucide-react";
-import { supabase, type Experiment, type ForwardValidation, type ForwardSignalAlert, type PaperAccount, type PaperTrade } from "@/lib/supabase";
+import { Radio, ShieldCheck, Activity, Bell, ArrowRight, Wallet, TrendingDown, Percent, Trophy } from "lucide-react";
+import {
+  supabase, type Experiment, type ForwardValidation, type ForwardValidationHistoryRow,
+  type ForwardSignalAlert, type PaperAccount, type PaperTrade, type ExperimentTrade,
+} from "@/lib/supabase";
+import { computeRecurrence } from "@/lib/recurrence";
+import { fetchAllRows } from "@/lib/fetchAll";
 import { StatTile } from "@/components/StatTile";
 import { BannerBackground } from "@/components/BannerBackground";
 import { PaperEquityCurve } from "@/components/PaperEquityCurve";
+import { ForwardStatusBadge, type ForwardStatus } from "@/components/ForwardStatusBadge";
 import { formatDateTime, formatNum, formatPct, formatR, formatUSD } from "@/lib/format";
 import {
   TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, BORDER_SOFT,
@@ -20,66 +26,115 @@ const TRACKING_MIN_SCORE = 80;
 // Must match trading_lab/paper_portfolio.py's STARTING_EQUITY.
 const STARTING_EQUITY = 10_000;
 
-type ForwardStatus = "promoted" | "tracking" | "not checked yet";
-
-function ForwardStatusBadge({ status }: { status: ForwardStatus }) {
-  const style = {
-    promoted: { color: STATUS_GOOD, icon: "✓", label: "Promoted -- live alerts active" },
-    tracking: { color: STATUS_WARNING, icon: "·", label: "Forward tracking" },
-    "not checked yet": { color: TEXT_MUTED, icon: "·", label: "Not checked yet" },
-  }[status];
-
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium whitespace-nowrap"
-      style={{ color: style.color, borderColor: tint(style.color, 25), backgroundColor: tint(style.color, 10) }}
-    >
-      {status === "promoted" ? (
-        <span className="relative inline-flex h-2 w-2" aria-hidden>
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" style={{ backgroundColor: style.color }} />
-          <span className="relative inline-flex h-2 w-2 rounded-full" style={{ backgroundColor: style.color }} />
-        </span>
-      ) : (
-        <span aria-hidden>{style.icon}</span>
-      )}
-      {style.label}
-    </span>
-  );
-}
+type TrackedExperiment = Pick<Experiment, "id" | "created_at" | "symbol" | "interval" | "rule" | "plain_english" | "robustness_score">;
 
 export default async function LivePage() {
-  const [{ data: expData, error: expError }, { data: fvData }, { data: alertData }, { data: paperAccountData }, { data: paperTradeData }] = await Promise.all([
-    supabase
-      .from("experiments")
-      .select("id, created_at, symbol, interval, rule, plain_english, robustness_score")
-      .order("id", { ascending: false }),
-    supabase.from("forward_validation").select("*"),
-    supabase.from("forward_signal_alerts").select("*").order("sent_at", { ascending: false }).limit(20),
-    supabase.from("paper_account").select("equity, watermark").eq("id", 1).single(),
-    supabase.from("paper_trades").select("*").order("entry_time", { ascending: true }),
-  ]);
-
-  if (expError) {
+  let experiments: TrackedExperiment[];
+  let forwardValidations: ForwardValidation[];
+  let paperTrades: PaperTrade[];
+  try {
+    [experiments, forwardValidations, paperTrades] = await Promise.all([
+      // Every tracked/promoted-pattern stat on this page derives from this list, so it
+      // must be the complete table, not whatever fits under PostgREST's 1000-row cap --
+      // see fetchAll.ts.
+      fetchAllRows<TrackedExperiment>((from, to) =>
+        supabase
+          .from("experiments")
+          .select("id, created_at, symbol, interval, rule, plain_english, robustness_score")
+          .order("id", { ascending: false })
+          .range(from, to),
+      ),
+      fetchAllRows<ForwardValidation>((from, to) =>
+        supabase.from("forward_validation").select("*").order("experiment_id", { ascending: true }).range(from, to),
+      ),
+      fetchAllRows<PaperTrade>((from, to) =>
+        supabase.from("paper_trades").select("*").order("id", { ascending: true }).range(from, to),
+      ),
+    ]);
+  } catch (err) {
     return (
       <div className="rounded-lg px-4 py-3 text-sm" style={{ border: `1px solid ${BORDER}`, color: TEXT_MUTED }}>
-        Failed to load: {expError.message}
+        Failed to load: {err instanceof Error ? err.message : String(err)}
       </div>
     );
   }
 
-  const experiments = (expData ?? []) as Pick<Experiment, "id" | "created_at" | "symbol" | "interval" | "rule" | "plain_english" | "robustness_score">[];
-  const experimentById = new Map(experiments.map((e) => [e.id, e]));
+  const { data: alertData } = await supabase
+    .from("forward_signal_alerts")
+    .select("*")
+    .order("sent_at", { ascending: false })
+    .limit(20);
+  const { data: paperAccountData } = await supabase.from("paper_account").select("equity, watermark").eq("id", 1).single();
 
-  const forwardByExperiment = new Map((fvData ?? []).map((fv) => [fv.experiment_id, fv as ForwardValidation]));
+  const experimentById = new Map(experiments.map((e) => [e.id, e]));
+  const forwardByExperiment = new Map(forwardValidations.map((fv) => [fv.experiment_id, fv]));
 
   const tracked = experiments.filter((e) => (e.robustness_score?.total ?? 0) >= TRACKING_MIN_SCORE);
-  const promotedCount = tracked.filter((e) => forwardByExperiment.get(e.id)?.status === "promoted").length;
+  const promoted = tracked.filter((e) => forwardByExperiment.get(e.id)?.status === "promoted");
+  const promotedCount = promoted.length;
   const trackingCount = tracked.length - promotedCount;
+
+  // Survival history for currently-promoted patterns only -- "which ones survive the
+  // most" is only meaningful for patterns that got promoted at all.
+  const history = promoted.length
+    ? await fetchAllRows<ForwardValidationHistoryRow>((from, to) =>
+        supabase
+          .from("forward_validation_history")
+          .select("*")
+          .in("experiment_id", promoted.map((e) => e.id))
+          .order("checked_at", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to),
+      )
+    : [];
+  const historyByExperiment = new Map<number, ForwardValidationHistoryRow[]>();
+  for (const row of history) {
+    const list = historyByExperiment.get(row.experiment_id) ?? [];
+    list.push(row);
+    historyByExperiment.set(row.experiment_id, list);
+  }
+
+  // Forward trade timestamps for promoted patterns -- "how many times has this actually
+  // fired live" and "how often does it recur" both come straight from these real entries,
+  // not a guess.
+  const forwardTradeData = promoted.length
+    ? await fetchAllRows<Pick<ExperimentTrade, "id" | "experiment_id" | "entry_time">>((from, to) =>
+        supabase
+          .from("experiment_trades")
+          .select("id, experiment_id, entry_time")
+          .eq("split", "forward")
+          .in("experiment_id", promoted.map((e) => e.id))
+          .order("id", { ascending: true })
+          .range(from, to),
+      )
+    : [];
+  const forwardEntriesByExperiment = new Map<number, Date[]>();
+  for (const row of forwardTradeData) {
+    const list = forwardEntriesByExperiment.get(row.experiment_id) ?? [];
+    list.push(new Date(row.entry_time));
+    forwardEntriesByExperiment.set(row.experiment_id, list);
+  }
+
+  const survivalLeaderboard = promoted
+    .map((exp) => {
+      const fv = forwardByExperiment.get(exp.id);
+      const rows = historyByExperiment.get(exp.id) ?? [];
+      // Demotions: count every promoted -> tracking transition found in chronological order.
+      let demotions = 0;
+      for (let i = 1; i < rows.length; i++) {
+        if (rows[i - 1].status === "promoted" && rows[i].status === "tracking") demotions++;
+      }
+      const latest = rows[rows.length - 1];
+      const promotedAt = fv?.promoted_at ? new Date(fv.promoted_at) : null;
+      const daysPromoted = promotedAt ? (Date.now() - promotedAt.getTime()) / 86_400_000 : null;
+      const recurrence = computeRecurrence(forwardEntriesByExperiment.get(exp.id) ?? []);
+      return { exp, fv, latest, demotions, daysPromoted, recurrence };
+    })
+    .sort((a, b) => (b.daysPromoted ?? 0) - (a.daysPromoted ?? 0));
 
   const alerts = (alertData ?? []) as ForwardSignalAlert[];
 
   const paperAccount = (paperAccountData ?? { equity: STARTING_EQUITY, watermark: null }) as PaperAccount;
-  const paperTrades = (paperTradeData ?? []) as PaperTrade[];
   const paperReturnPct = paperAccount.equity / STARTING_EQUITY - 1;
   const paperWinRate = paperTrades.length ? paperTrades.filter((t) => t.pnl_dollars > 0).length / paperTrades.length : null;
   const paperMaxDrawdown = paperTrades.reduce(
@@ -210,6 +265,95 @@ export default async function LivePage() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {promoted.length > 0 && (
+        <div>
+          <h2 className="flex items-center gap-2 text-sm font-medium mb-3" style={{ color: TEXT_SECONDARY }}>
+            <Trophy size={15} style={{ color: ACCENT }} />
+            Promoted patterns -- survival leaderboard
+            <span className="font-normal normal-case" style={{ color: TEXT_MUTED, opacity: 0.8 }}>
+              (longest-surviving first; a demotion means forward performance later dropped back below the bar)
+            </span>
+          </h2>
+          <div className="overflow-x-auto rounded-2xl shadow-sm" style={{ border: `1px solid ${BORDER}` }}>
+            <table className="w-full text-sm">
+              <thead>
+                <tr
+                  className="border-b text-left text-xs"
+                  style={{ borderColor: BORDER, backgroundColor: TABLE_HEADER_BG, color: TEXT_MUTED }}
+                >
+                  <th className="px-4 py-3 font-medium">Symbol</th>
+                  <th className="px-4 py-3 font-medium">Rule</th>
+                  <th className="px-4 py-3 font-medium text-right">Days promoted</th>
+                  <th className="px-4 py-3 font-medium text-right">Demotions</th>
+                  <th className="px-4 py-3 font-medium text-right">Live occurrences</th>
+                  <th className="px-4 py-3 font-medium text-right">Recurs every</th>
+                  <th className="px-4 py-3 font-medium text-right">Bootstrap lower bound</th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {survivalLeaderboard.map(({ exp, latest, demotions, daysPromoted, recurrence }) => (
+                  <tr
+                    key={exp.id}
+                    className="group border-b last:border-0 transition-colors hover:bg-[var(--tl-text-primary)]/[0.03]"
+                    style={{ borderColor: BORDER_SOFT }}
+                  >
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className="font-medium" style={{ color: TEXT_PRIMARY }}>{exp.symbol}</span>{" "}
+                      <span style={{ color: TEXT_MUTED }}>{exp.interval}</span>
+                    </td>
+                    <td className="px-4 py-3 max-w-md" style={{ color: TEXT_SECONDARY }}>
+                      <Link
+                        href={`/experiments/${exp.id}`}
+                        className="block truncate transition-colors hover:text-[var(--tl-accent)]"
+                        style={{ fontFamily: "var(--font-geist-mono)" }}
+                        title={exp.rule}
+                      >
+                        {exp.rule}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>
+                      {daysPromoted === null ? "—" : daysPromoted.toFixed(1)}
+                    </td>
+                    <td
+                      className="px-4 py-3 text-right tabular-nums"
+                      style={{ color: demotions > 0 ? STATUS_WARNING : TEXT_SECONDARY }}
+                    >
+                      {demotions}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }}>
+                      {latest ? latest.n_trades : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums" style={{ color: TEXT_SECONDARY }} title={
+                      recurrence
+                        ? `Based on ${recurrence.occurrences} live occurrences. Next expected roughly ${recurrence.nextExpectedWindow[0].toLocaleDateString()} - ${recurrence.nextExpectedWindow[1].toLocaleDateString()}.`
+                        : "Not enough live occurrences yet to estimate frequency (need at least 3)."
+                    }>
+                      {recurrence ? `~${recurrence.medianGapDays.toFixed(1)}d` : "—"}
+                    </td>
+                    <td
+                      className="px-4 py-3 text-right tabular-nums"
+                      style={{ color: !latest ? TEXT_MUTED : latest.lower_bound_r > 0 ? STATUS_GOOD : STATUS_CRITICAL }}
+                    >
+                      {latest ? formatR(latest.lower_bound_r) : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <Link href={`/experiments/${exp.id}`}>
+                        <ArrowRight
+                          size={15}
+                          className="opacity-0 transition-opacity group-hover:opacity-100"
+                          style={{ color: TEXT_MUTED }}
+                        />
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

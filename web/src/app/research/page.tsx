@@ -1,5 +1,6 @@
 import { CheckCircle2 } from "lucide-react";
 import { supabase, type ResearchRun, type Experiment, type AgentSettings } from "@/lib/supabase";
+import { fetchAllRows } from "@/lib/fetchAll";
 import {
   computeFunnelTotals,
   funnelStages,
@@ -19,22 +20,30 @@ export const dynamic = "force-dynamic";
 const cardStyle = { backgroundColor: SURFACE, border: `1px solid ${BORDER}` };
 
 export default async function ResearchHealth() {
-  const [{ data: runsData, error: runsError }, { data: expData, error: expError }, { data: settingsData }] = await Promise.all([
-    supabase.from("research_runs").select("*").order("created_at", { ascending: true }).limit(5000),
-    supabase.from("experiments").select("*").order("created_at", { ascending: true }).limit(5000),
-    supabase.from("local_agent_settings").select("max_workers, paused").eq("id", 1).single(),
-  ]);
-
-  if (runsError || expError) {
+  // This page exists specifically to answer "is the research process itself trustworthy" --
+  // every total here (hypotheses tested, funnel counts, survival rates) must reflect
+  // every run and every experiment ever recorded, not whatever fits under a row cap.
+  // A silently-truncated integrity page would be the worst possible place for this bug.
+  let runs: ResearchRun[];
+  let experiments: Experiment[];
+  try {
+    [runs, experiments] = await Promise.all([
+      fetchAllRows<ResearchRun>((from, to) =>
+        supabase.from("research_runs").select("*").order("id", { ascending: true }).range(from, to),
+      ),
+      fetchAllRows<Experiment>((from, to) =>
+        supabase.from("experiments").select("*").order("id", { ascending: true }).range(from, to),
+      ),
+    ]);
+  } catch (err) {
     return (
       <div className="rounded-lg px-4 py-3 text-sm" style={{ color: STATUS_CRITICAL }}>
-        Failed to load research health data: {runsError?.message ?? expError?.message}
+        Failed to load research health data: {err instanceof Error ? err.message : String(err)}
       </div>
     );
   }
 
-  const runs = (runsData ?? []) as ResearchRun[];
-  const experiments = (expData ?? []) as Experiment[];
+  const { data: settingsData } = await supabase.from("local_agent_settings").select("max_workers, paused").eq("id", 1).single();
   const agentSettings = (settingsData ?? { max_workers: 3, paused: false }) as AgentSettings;
 
   const totals = computeFunnelTotals(runs, experiments);

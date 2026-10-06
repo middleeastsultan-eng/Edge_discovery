@@ -5,7 +5,7 @@ import "server-only";
 // separate rather than bridging to Python, since this is a simple, fixed-date-range,
 // read-only historical fetch with no need to touch the research/live pipeline at all.
 
-export type Candle = { time: number; open: number; high: number; low: number; close: number };
+export type Candle = { time: number; open: number; high: number; low: number; close: number; volume: number };
 
 const SYMBOL_TO_COINBASE_PRODUCT: Record<string, string> = { BTCUSDT: "BTC-USD", ETHUSDT: "ETH-USD" };
 
@@ -52,7 +52,7 @@ async function fetchCoinbaseNative(symbol: string, interval: string, start: Date
   }
 
   // Coinbase candle row shape: [time, low, high, open, close, volume]
-  const candles = rows.map((r) => ({ time: r[0], low: r[1], high: r[2], open: r[3], close: r[4] }));
+  const candles = rows.map((r) => ({ time: r[0], low: r[1], high: r[2], open: r[3], close: r[4], volume: r[5] }));
   return sortAndDedupe(candles);
 }
 
@@ -92,6 +92,7 @@ function resampleCandles(candles: Candle[], bucketSeconds: number): Candle[] {
       high: Math.max(...group.map((c) => c.high)),
       low: Math.min(...group.map((c) => c.low)),
       close: group[group.length - 1].close,
+      volume: group.reduce((sum, c) => sum + c.volume, 0),
     }))
     .sort((a, b) => a.time - b.time);
 }
@@ -131,7 +132,10 @@ async function fetchAlpacaCandles(symbol: string, interval: string, start: Date,
     if (!res.ok) break;
     const data = await res.json();
     for (const bar of data.bars ?? []) {
-      rows.push({ time: Math.floor(new Date(bar.t).getTime() / 1000), open: bar.o, high: bar.h, low: bar.l, close: bar.c });
+      rows.push({
+        time: Math.floor(new Date(bar.t).getTime() / 1000),
+        open: bar.o, high: bar.h, low: bar.l, close: bar.c, volume: bar.v ?? 0,
+      });
     }
     pageToken = data.next_page_token;
   } while (pageToken);
@@ -147,4 +151,15 @@ export async function getCandles(symbol: string, interval: string, source: strin
   return source === "stocks"
     ? fetchAlpacaCandles(symbol, interval, start, end)
     : fetchCoinbaseCandles(symbol, interval, start, end);
+}
+
+/** Converts a candle series to % change from its first close -- the only way two
+ * symbols at very different price levels (QQQ ~$400s, SPY ~$500s) can be overlaid
+ * on one chart and actually compared, since the point is relative movement, not
+ * absolute price.
+ */
+export function toPercentChangeSeries(candles: Candle[]): { time: number; value: number }[] {
+  if (candles.length === 0) return [];
+  const base = candles[0].close;
+  return candles.map((c) => ({ time: c.time, value: ((c.close - base) / base) * 100 }));
 }

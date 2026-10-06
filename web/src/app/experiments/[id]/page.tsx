@@ -1,8 +1,8 @@
 import Link from "next/link";
 import type { ElementType, ReactNode } from "react";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Dices, ShieldCheck, FlaskConical, LineChart, CandlestickChart, History, Dice5, DollarSign, SlidersHorizontal, Microscope } from "lucide-react";
-import { supabase, type Experiment, type ExperimentTrade } from "@/lib/supabase";
+import { ArrowLeft, Dices, ShieldCheck, FlaskConical, LineChart, CandlestickChart, History, Dice5, DollarSign, SlidersHorizontal, Microscope, Radio, Repeat } from "lucide-react";
+import { supabase, type Experiment, type ExperimentTrade, type ForwardValidation } from "@/lib/supabase";
 import { verdict } from "@/lib/evaluate";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StatTile } from "@/components/StatTile";
@@ -11,13 +11,22 @@ import { EquityCurve } from "@/components/EquityCurve";
 import { RobustnessScore } from "@/components/RobustnessScore";
 import { BannerBackground } from "@/components/BannerBackground";
 import { PatternChart } from "@/components/PatternChart";
-import { getCandles } from "@/lib/candles";
+import { ForwardStatusBadge, type ForwardStatus } from "@/components/ForwardStatusBadge";
+import { getCandles, toPercentChangeSeries } from "@/lib/candles";
+import { fetchAllRows } from "@/lib/fetchAll";
+import { computeFeatureSeries, evaluateSignal } from "@/lib/indicators";
+import { computeRecurrence } from "@/lib/recurrence";
 import { formatDateTime, formatNum, formatPct, formatR } from "@/lib/format";
 import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, BORDER_SOFT, STATUS_GOOD, STATUS_CRITICAL, ACCENT, TABLE_HEADER_BG, tint } from "@/lib/theme";
 
 export const dynamic = "force-dynamic";
 
 const cardStyle = { backgroundColor: SURFACE, border: `1px solid ${BORDER}` };
+
+// Must match trading_lab/backtest.py's BacktestConfig defaults -- the same multiples
+// compute_trade_levels() in live.py uses to price a real entry.
+const SL_ATR = 1.0;
+const TP_ATR = 2.0;
 
 function SectionHeading({ icon: Icon, children }: { icon: ElementType; children: ReactNode }) {
   return (
@@ -50,19 +59,47 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
   const v = verdict(exp);
   const mc = exp.monte_carlo;
 
-  const { data: trades } = await supabase
-    .from("experiment_trades")
+  // Long-running tracked patterns accumulate forward trades indefinitely -- an unbounded
+  // .select() alone isn't safe past 1000 rows (PostgREST's silent default cap, see
+  // fetchAll.ts), so every trade (equity curve, chart markers, recurrence stats) is
+  // fetched through the same paginating helper used elsewhere.
+  const trades = await fetchAllRows<ExperimentTrade>((from, to) =>
+    supabase
+      .from("experiment_trades")
+      .select("*")
+      .eq("experiment_id", exp.id)
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
+
+  const tradeList = trades;
+  const forwardTrades = tradeList.filter((t) => t.split === "forward");
+  const historicalTrades = tradeList.filter((t) => t.split !== "forward");
+
+  const { data: fvData } = await supabase
+    .from("forward_validation")
     .select("*")
     .eq("experiment_id", exp.id)
-    .order("entry_time", { ascending: true });
+    .maybeSingle();
+  const forwardValidation = fvData as ForwardValidation | null;
+  const forwardStatus: ForwardStatus = forwardValidation ? forwardValidation.status : "not checked yet";
 
-  const tradeList = (trades ?? []) as ExperimentTrade[];
+  // "How many times has this fired live" and "how often does it recur" -- prefer the
+  // live/forward record once there's enough of it (>=3 occurrences) to say anything
+  // meaningful; otherwise fall back to the larger historical (validation+test) sample,
+  // clearly labeled as backtest-derived rather than proven live frequency.
+  const liveRecurrence = computeRecurrence(forwardTrades.map((t) => new Date(t.entry_time)));
+  const historicalRecurrence = computeRecurrence(historicalTrades.map((t) => new Date(t.entry_time)));
+  const recurrence = liveRecurrence ?? historicalRecurrence;
+  const recurrenceSource: "live" | "historical" | null = liveRecurrence ? "live" : historicalRecurrence ? "historical" : null;
 
   // Chart only the validation+test window the trades actually span (plus a little
   // padding), not the full multi-year discovery range -- same "discovery-set
   // performance is excluded, it's optimistic by construction" reasoning used
   // everywhere else on this page, and keeps the candle fetch bounded.
   let candles: Awaited<ReturnType<typeof getCandles>> = [];
+  let qqqSeries: { time: number; value: number }[] = [];
+  let spySeries: { time: number; value: number }[] = [];
   if (tradeList.length > 0 && exp.source) {
     const entryTimes = tradeList.map((t) => new Date(t.entry_time).getTime());
     const exitTimes = tradeList.map((t) => new Date(t.exit_time).getTime());
@@ -70,6 +107,39 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
     const chartStart = new Date(Math.min(...entryTimes) - padMs);
     const chartEnd = new Date(Math.min(Math.max(...exitTimes) + padMs, Date.now()));
     candles = await getCandles(exp.symbol, exp.interval, exp.source, chartStart, chartEnd);
+
+    // Index overlay: Nasdaq 100 (QQQ) and S&P 500 (SPY), normalized to % change so
+    // they're comparable on the same chart regardless of this experiment's own symbol
+    // or absolute price level. Reuse the already-fetched candles when this experiment
+    // IS QQQ or SPY instead of re-fetching the identical data.
+    const [qqqCandles, spyCandles] = await Promise.all([
+      exp.symbol === "QQQ" ? Promise.resolve(candles) : getCandles("QQQ", exp.interval, "stocks", chartStart, chartEnd),
+      exp.symbol === "SPY" ? Promise.resolve(candles) : getCandles("SPY", exp.interval, "stocks", chartStart, chartEnd),
+    ]);
+    qqqSeries = toPercentChangeSeries(qqqCandles);
+    spySeries = toPercentChangeSeries(spyCandles);
+  }
+
+  // Signal overlay: where the rule's raw boolean condition was historically true, not
+  // just where trades were actually taken (the markers already show that separately).
+  const features = computeFeatureSeries(candles);
+  const signal = evaluateSignal(features, exp.clauses);
+
+  // Buy/sell price lines: a concrete worked example tied to the most recent real trade,
+  // computed the same way trading_lab/live.py's compute_trade_levels() prices an entry.
+  let latestTradeLevels: { entry: number; stop: number; target: number } | null = null;
+  if (tradeList.length > 0) {
+    const latestTrade = tradeList[tradeList.length - 1];
+    const entryTimeSec = Math.floor(new Date(latestTrade.entry_time).getTime() / 1000);
+    const entryFeatureRow = features.find((f) => f.time === entryTimeSec);
+    if (entryFeatureRow?.atr_14 !== undefined) {
+      const atr = entryFeatureRow.atr_14;
+      latestTradeLevels = {
+        entry: latestTrade.entry_price,
+        stop: latestTrade.entry_price - SL_ATR * atr,
+        target: latestTrade.entry_price + TP_ATR * atr,
+      };
+    }
   }
 
   return (
@@ -201,10 +271,76 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
         <SectionHeading icon={CandlestickChart}>
           Pattern on the chart
           <span className="font-normal normal-case" style={{ color: TEXT_MUTED, opacity: 0.8 }}>
-            (validation + test window -- where this rule actually traded, win/loss marked)
+            (validation + test window -- gold strip above shows when the rule&apos;s condition was true;
+            trade markers show where it actually entered)
           </span>
         </SectionHeading>
-        <PatternChart candles={candles} trades={tradeList} />
+        <PatternChart
+          candles={candles} trades={tradeList} signal={signal} latestTradeLevels={latestTradeLevels}
+          qqqSeries={qqqSeries} spySeries={spySeries}
+        />
+      </section>
+
+      <section className="rounded-2xl p-4 shadow-sm space-y-4" style={cardStyle}>
+        <SectionHeading icon={Radio}>
+          Live tracking
+          <ForwardStatusBadge status={forwardStatus} />
+        </SectionHeading>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <StatTile label="Live occurrences (forward trades)" value={String(forwardTrades.length)} />
+          <StatTile
+            label="Forward win rate"
+            value={forwardValidation?.forward_stats ? formatPct(forwardValidation.forward_stats.win_rate) : "—"}
+          />
+          <StatTile
+            label="Forward expectancy"
+            value={forwardValidation?.forward_stats ? formatR(forwardValidation.forward_stats.expectancy_r) : "—"}
+            tone={
+              !forwardValidation?.forward_stats ? "neutral"
+              : forwardValidation.forward_stats.expectancy_r > 0 ? "good"
+              : forwardValidation.forward_stats.expectancy_r < 0 ? "bad" : "neutral"
+            }
+          />
+          <StatTile
+            label="Promoted since"
+            value={forwardValidation?.promoted_at ? new Date(forwardValidation.promoted_at).toLocaleDateString() : "—"}
+          />
+        </div>
+
+        <div className="pt-1" style={{ borderTop: `1px solid ${BORDER_SOFT}` }}>
+          <h3 className="flex items-center gap-1.5 text-xs font-medium pt-3 mb-2" style={{ color: TEXT_SECONDARY }}>
+            <Repeat size={13} style={{ color: ACCENT }} />
+            How often does this recur?
+          </h3>
+          {recurrence ? (
+            <div className="text-sm" style={{ color: TEXT_SECONDARY }}>
+              Based on {recurrence.occurrences}{" "}
+              {recurrenceSource === "live" ? "live forward trades" : "historical (validation + test) trades"}, this
+              pattern has fired roughly every{" "}
+              <span className="font-medium" style={{ color: TEXT_PRIMARY }}>{recurrence.medianGapDays.toFixed(1)} days</span>{" "}
+              (typically between {recurrence.p25GapDays.toFixed(1)} and {recurrence.p75GapDays.toFixed(1)} days apart).
+              Last occurrence: {recurrence.lastOccurrence.toLocaleDateString()}. Based on that pace, the next
+              occurrence might land around{" "}
+              <span className="font-medium" style={{ color: TEXT_PRIMARY }}>{recurrence.nextExpectedMedian.toLocaleDateString()}</span>{" "}
+              (roughly {recurrence.nextExpectedWindow[0].toLocaleDateString()} to {recurrence.nextExpectedWindow[1].toLocaleDateString()}).
+              {recurrenceSource === "historical" && (
+                <span className="block mt-1" style={{ color: TEXT_MUTED }}>
+                  Not enough live occurrences yet to base this on live data alone -- shown using the larger
+                  historical sample instead.
+                </span>
+              )}
+              <span className="block mt-1 text-xs" style={{ color: TEXT_MUTED }}>
+                This is a rough estimate from past gaps, not a schedule -- real markets don&apos;t repeat on a fixed
+                clock, and the gap between occurrences has varied (see range above).
+              </span>
+            </div>
+          ) : (
+            <p className="text-sm" style={{ color: TEXT_MUTED }}>
+              Not enough occurrences yet ({Math.max(forwardTrades.length, historicalTrades.length)} so far, need at
+              least 3) to estimate how often this pattern recurs.
+            </p>
+          )}
+        </div>
       </section>
 
       <section className="rounded-2xl p-4 shadow-sm" style={cardStyle}>
