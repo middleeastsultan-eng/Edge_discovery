@@ -54,7 +54,7 @@ type LatestTradeLevels = { entry: number; stop: number; target: number };
 
 export function PatternChart({
   candles, trades, signal, latestTradeLevels, symbol, source, otherIndexCandles, otherIndexSymbol,
-  divergenceEvents, chartStartIso, chartEndIso, interval, clauses,
+  divergenceEvents, chartStartIso, chartEndIso, interval, clauses, liveMode = false, liveRefreshSeconds = 60,
 }: {
   candles: Candle[];
   trades: ExperimentTrade[];
@@ -69,6 +69,11 @@ export function PatternChart({
   chartEndIso?: string | null;
   interval: string;
   clauses: ClauseJson[];
+  /** Auto-refreshes the chart on a timer, always sliding the window up to "now" --
+   * for a standalone live-market view (the welcome page), not an experiment's fixed
+   * historical span. */
+  liveMode?: boolean;
+  liveRefreshSeconds?: number;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -97,44 +102,70 @@ export function PatternChart({
   const hasOtherIndex = liveOtherCandles.length > 0 && !!otherIndexSymbol;
   const hasDivergence = liveDivergence.length > 0;
 
-  // Timeframe switch: re-fetch both symbols at the new resolution over the SAME
-  // real-world date window, then recompute divergence and the signal strip at that
-  // resolution client-side -- a rule's "condition true" bars are timeframe-specific,
-  // so showing them against the wrong-resolution candles would be silently wrong.
-  // Trade markers/price lines stay tied to the experiment's OWN native interval only
-  // (they're real backtest fills, not something that exists "at" an arbitrary timeframe).
+  // Shared by both the timeframe switcher and live auto-refresh: re-fetch both symbols
+  // for [start, end] at `targetInterval`, recomputing divergence and the signal strip
+  // at that resolution client-side -- a rule's "condition true" bars are timeframe-
+  // specific, so showing them against the wrong-resolution candles would be wrong.
+  const loadCandles = useCallback(async (targetInterval: string, start: Date, end: Date) => {
+    const fetchOne = async (sym: string) => {
+      const url = `/api/candles?symbol=${encodeURIComponent(sym)}&interval=${encodeURIComponent(targetInterval)}&source=${encodeURIComponent(source)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`;
+      const res = await fetch(url);
+      if (!res.ok) return [] as Candle[];
+      const data = await res.json();
+      return (data.candles ?? []) as Candle[];
+    };
+
+    const [newPrimary, newOther] = await Promise.all([
+      fetchOne(symbol),
+      otherIndexSymbol ? fetchOne(otherIndexSymbol) : Promise.resolve([] as Candle[]),
+    ]);
+
+    setLiveCandles(newPrimary);
+    setLiveOtherCandles(newOther);
+    setLiveDivergence(otherIndexSymbol && newOther.length > 0 ? detectDivergences(newPrimary, newOther) : []);
+
+    const features = computeFeatureSeries(newPrimary, newOther);
+    setLiveSignal(evaluateSignal(features, clauses));
+
+    setActiveInterval(targetInterval);
+    setShownRange({ start: start.toISOString(), end: end.toISOString() });
+  }, [symbol, otherIndexSymbol, source, clauses]);
+
+  // Timeframe switch: re-fetch both symbols at the new resolution. In liveMode there's
+  // no fixed historical span to re-window (the welcome page's chart is always "recent
+  // up to now"), so it just uses the same rolling-to-now window the auto-refresh does.
+  // Otherwise, re-fetches over the experiment's own real-world date window. Trade
+  // markers/price lines stay tied to the experiment's OWN native interval only --
+  // they're real backtest fills, not something that exists "at" an arbitrary timeframe.
   const switchTimeframe = useCallback(async (newInterval: string) => {
-    if (newInterval === activeInterval || !chartStartIso || !chartEndIso) return;
+    if (newInterval === activeInterval) return;
+    if (!liveMode && (!chartStartIso || !chartEndIso)) return;
     setLoading(true);
     try {
-      const { start: effectiveStart, end: fullEnd } = windowedRange(newInterval, new Date(chartStartIso), new Date(chartEndIso));
-
-      const fetchOne = async (sym: string) => {
-        const url = `/api/candles?symbol=${encodeURIComponent(sym)}&interval=${encodeURIComponent(newInterval)}&source=${encodeURIComponent(source)}&start=${encodeURIComponent(effectiveStart.toISOString())}&end=${encodeURIComponent(fullEnd.toISOString())}`;
-        const res = await fetch(url);
-        if (!res.ok) return [] as Candle[];
-        const data = await res.json();
-        return (data.candles ?? []) as Candle[];
-      };
-
-      const [newPrimary, newOther] = await Promise.all([
-        fetchOne(symbol),
-        otherIndexSymbol ? fetchOne(otherIndexSymbol) : Promise.resolve([] as Candle[]),
-      ]);
-
-      setLiveCandles(newPrimary);
-      setLiveOtherCandles(newOther);
-      setLiveDivergence(otherIndexSymbol && newOther.length > 0 ? detectDivergences(newPrimary, newOther) : []);
-
-      const features = computeFeatureSeries(newPrimary, newOther);
-      setLiveSignal(evaluateSignal(features, clauses));
-
-      setActiveInterval(newInterval);
-      setShownRange({ start: effectiveStart.toISOString(), end: fullEnd.toISOString() });
+      const { start, end } = liveMode
+        ? windowedRange(newInterval, new Date(Date.now() - 60 * 24 * 60 * 60 * 1000), new Date())
+        : windowedRange(newInterval, new Date(chartStartIso!), new Date(chartEndIso!));
+      await loadCandles(newInterval, start, end);
     } finally {
       setLoading(false);
     }
-  }, [activeInterval, chartStartIso, chartEndIso, symbol, otherIndexSymbol, source, clauses]);
+  }, [activeInterval, chartStartIso, chartEndIso, liveMode, loadCandles]);
+
+  // Live mode: re-fetch on an interval, always extending the window up to "now" --
+  // for the welcome page's real-time chart, not tied to any one experiment's fixed
+  // historical span. Silent (no loading spinner) so it doesn't flicker every refresh.
+  useEffect(() => {
+    if (!liveMode) return;
+    const refresh = () => {
+      const end = new Date();
+      const { start } = windowedRange(activeInterval, new Date(end.getTime() - 60 * 24 * 60 * 60 * 1000), end);
+      loadCandles(activeInterval, start, end);
+    };
+    refresh();
+    const id = setInterval(refresh, liveRefreshSeconds * 1000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveMode, activeInterval, loadCandles, liveRefreshSeconds]);
 
   // Hover-driven focus: dims whichever symbol's candles the mouse ISN'T over (or
   // isn't hovering the legend label for), applied imperatively via series refs --
@@ -329,10 +360,10 @@ export function PatternChart({
     hasOtherIndex, showOtherIndex, showPrimaryIndex, showDivergence, hasDivergence, isNativeInterval, applyFocus,
   ]);
 
-  if (candles.length === 0) {
+  if (liveCandles.length === 0) {
     return (
       <div className="text-sm" style={{ color: TEXT_MUTED }}>
-        No candle data available for this pattern&apos;s date range.
+        {liveMode ? "Loading live candles..." : "No candle data available for this pattern's date range."}
       </div>
     );
   }
@@ -368,7 +399,7 @@ export function PatternChart({
           )}
         </div>
 
-        {chartStartIso && chartEndIso && (
+        {(liveMode || (chartStartIso && chartEndIso)) && (
           <div className="flex items-center gap-1 text-xs" style={{ color: TEXT_SECONDARY }}>
             {TIMEFRAMES.map((tf) => (
               <button
@@ -391,8 +422,17 @@ export function PatternChart({
       </div>
       {shownRange && (
         <p className="text-xs mb-2" style={{ color: TEXT_MUTED }}>
+          {liveMode && (
+            <span className="inline-flex items-center gap-1.5 mr-2">
+              <span className="relative inline-flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" style={{ backgroundColor: "var(--tl-status-good)" }} />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full" style={{ backgroundColor: "var(--tl-status-good)" }} />
+              </span>
+              Live, updating every {liveRefreshSeconds}s
+            </span>
+          )}
           Showing {new Date(shownRange.start).toLocaleDateString()} &rarr; {new Date(shownRange.end).toLocaleDateString()}
-          {isNativeInterval ? " (full study window)" : ` (recent window at ${TIMEFRAMES.find((t) => t.interval === activeInterval)?.label ?? activeInterval} resolution)`}
+          {!liveMode && (isNativeInterval ? " (full study window)" : ` (recent window at ${TIMEFRAMES.find((t) => t.interval === activeInterval)?.label ?? activeInterval} resolution)`)}
         </p>
       )}
       <div ref={containerRef} className="w-full" />

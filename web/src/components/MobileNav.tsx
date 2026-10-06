@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/experiments", label: "Experiments" },
   { href: "/research", label: "Research Health" },
   { href: "/live", label: "Live Signals" },
+  { href: "/live-chart", label: "Live Chart" },
   { href: "/community", label: "Community" },
 ];
 

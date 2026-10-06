@@ -3,7 +3,6 @@ import { ArrowRight, FlaskConical, Radio, Wallet, ShieldCheck } from "lucide-rea
 import { supabase, type Experiment, type ForwardValidation, type PaperAccount } from "@/lib/supabase";
 import { fetchAllRows } from "@/lib/fetchAll";
 import { StatTile } from "@/components/StatTile";
-import { getHeroImage } from "@/lib/pexels";
 import { formatPct, formatUSD } from "@/lib/format";
 import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, ACCENT, ACCENT_FOREGROUND, tint } from "@/lib/theme";
 
@@ -20,8 +19,7 @@ const CTAS = [
 ];
 
 export default async function WelcomePage() {
-  const [heroImage, experiments, forwardStatuses, { data: paperAccountData }] = await Promise.all([
-    getHeroImage("stock market data screen"),
+  const [experiments, forwardStatuses, { data: paperAccountData }] = await Promise.all([
     // Full table, not a capped page -- "Total experiments" must reflect the real count,
     // not however many fit under PostgREST's 1000-row default (see fetchAll.ts).
     fetchAllRows<Pick<Experiment, "id" | "robustness_score">>((from, to) =>
@@ -44,15 +42,16 @@ export default async function WelcomePage() {
         className="relative overflow-hidden rounded-3xl px-6 py-16 sm:px-12 sm:py-24 shadow-sm"
         style={{ border: `1px solid ${BORDER}` }}
       >
-        <div
+        <video
           aria-hidden
-          className={heroImage ? "absolute inset-0 -z-20 animate-ken-burns" : "absolute inset-0 -z-20"}
-          style={
-            heroImage
-              ? { backgroundImage: `url(${heroImage})`, backgroundSize: "cover", backgroundPosition: "center" }
-              : { background: `radial-gradient(ellipse at top left, ${tint(ACCENT, 25)}, transparent 60%)`, backgroundColor: "var(--tl-page)" }
-          }
-        />
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="absolute inset-0 -z-20 h-full w-full object-cover"
+        >
+          <source src="/video/hero.mp4" type="video/mp4" />
+        </video>
         <div aria-hidden className="absolute inset-0 -z-10" style={{ backgroundColor: "color-mix(in srgb, var(--tl-page) 78%, transparent)" }} />
 
         <div className="relative max-w-2xl animate-in fade-in slide-in-from-bottom-4 duration-700">

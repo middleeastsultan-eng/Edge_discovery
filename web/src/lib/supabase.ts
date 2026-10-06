@@ -175,6 +175,17 @@ export type ForwardSignalAlert = {
   target_price: number | null;
 };
 
+// A standalone live QQQ/SPY structure-divergence detection -- independent of any
+// discovered pattern's rule. See trading_lab/cross_asset.py's detect_latest_divergence.
+export type StructureDivergenceAlert = {
+  id: number;
+  leader: "QQQ" | "SPY";
+  follower: "QQQ" | "SPY";
+  direction: "bullish" | "bearish";
+  bar_time: string;
+  sent_at: string;
+};
+
 // Single simulated account that takes signals from promoted patterns only, sized by
 // fixed-fractional risk -- see trading_lab/paper_portfolio.py.
 export type PaperAccount = {
