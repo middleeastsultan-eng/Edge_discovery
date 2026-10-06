@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ElementType, ReactNode } from "react";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Dices, ShieldCheck, FlaskConical, LineChart, History, Dice5, DollarSign, SlidersHorizontal, Microscope } from "lucide-react";
+import { ArrowLeft, Dices, ShieldCheck, FlaskConical, LineChart, CandlestickChart, History, Dice5, DollarSign, SlidersHorizontal, Microscope } from "lucide-react";
 import { supabase, type Experiment, type ExperimentTrade } from "@/lib/supabase";
 import { verdict } from "@/lib/evaluate";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -10,6 +10,8 @@ import { StatsGrid } from "@/components/StatsGrid";
 import { EquityCurve } from "@/components/EquityCurve";
 import { RobustnessScore } from "@/components/RobustnessScore";
 import { BannerBackground } from "@/components/BannerBackground";
+import { PatternChart } from "@/components/PatternChart";
+import { getCandles } from "@/lib/candles";
 import { formatDateTime, formatNum, formatPct, formatR } from "@/lib/format";
 import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, BORDER_SOFT, STATUS_GOOD, STATUS_CRITICAL, ACCENT, TABLE_HEADER_BG, tint } from "@/lib/theme";
 
@@ -53,6 +55,22 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
     .select("*")
     .eq("experiment_id", exp.id)
     .order("entry_time", { ascending: true });
+
+  const tradeList = (trades ?? []) as ExperimentTrade[];
+
+  // Chart only the validation+test window the trades actually span (plus a little
+  // padding), not the full multi-year discovery range -- same "discovery-set
+  // performance is excluded, it's optimistic by construction" reasoning used
+  // everywhere else on this page, and keeps the candle fetch bounded.
+  let candles: Awaited<ReturnType<typeof getCandles>> = [];
+  if (tradeList.length > 0 && exp.source) {
+    const entryTimes = tradeList.map((t) => new Date(t.entry_time).getTime());
+    const exitTimes = tradeList.map((t) => new Date(t.exit_time).getTime());
+    const padMs = 20 * 24 * 60 * 60 * 1000; // 20 days
+    const chartStart = new Date(Math.min(...entryTimes) - padMs);
+    const chartEnd = new Date(Math.min(Math.max(...exitTimes) + padMs, Date.now()));
+    candles = await getCandles(exp.symbol, exp.interval, exp.source, chartStart, chartEnd);
+  }
 
   return (
     <div className="space-y-10">
@@ -180,8 +198,18 @@ export default async function ExperimentDetail(props: PageProps<"/experiments/[i
       </section>
 
       <section className="rounded-2xl p-4 shadow-sm" style={cardStyle}>
+        <SectionHeading icon={CandlestickChart}>
+          Pattern on the chart
+          <span className="font-normal normal-case" style={{ color: TEXT_MUTED, opacity: 0.8 }}>
+            (validation + test window -- where this rule actually traded, win/loss marked)
+          </span>
+        </SectionHeading>
+        <PatternChart candles={candles} trades={tradeList} />
+      </section>
+
+      <section className="rounded-2xl p-4 shadow-sm" style={cardStyle}>
         <SectionHeading icon={LineChart}>Equity curve</SectionHeading>
-        <EquityCurve trades={(trades ?? []) as ExperimentTrade[]} />
+        <EquityCurve trades={tradeList} />
       </section>
 
       {exp.walk_forward && exp.walk_forward.length > 0 && (

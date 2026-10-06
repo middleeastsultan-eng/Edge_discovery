@@ -150,6 +150,14 @@ CREATE TABLE IF NOT EXISTS forward_signal_alerts (
     UNIQUE (experiment_id, bar_time)
 );
 
+-- The exact entry/stop/target prices build_alert_message() put in the Telegram text,
+-- captured at the same moment instead of only ever existing as a string that scrolls
+-- away -- so the dashboard can durably show "here's exactly what to do," not just
+-- whatever's still visible in Telegram's chat history.
+ALTER TABLE forward_signal_alerts ADD COLUMN IF NOT EXISTS entry_price DOUBLE PRECISION;
+ALTER TABLE forward_signal_alerts ADD COLUMN IF NOT EXISTS stop_price DOUBLE PRECISION;
+ALTER TABLE forward_signal_alerts ADD COLUMN IF NOT EXISTS target_price DOUBLE PRECISION;
+
 -- Single-row remote control for the local multiprocessing research loop (run_overnight.py).
 -- The dashboard writes here; the local script polls it once per round to decide how many
 -- worker processes to run and whether to pause. id is always 1 -- not a history, a live knob.
@@ -504,21 +512,24 @@ def upsert_forward_validation(experiment_id: int, status: str, forward_stats: di
         conn.commit()
 
 
-def record_alert_if_new(experiment_id: int, bar_time) -> bool:
+def record_alert_if_new(experiment_id: int, bar_time, entry_price: float | None = None,
+                         stop_price: float | None = None, target_price: float | None = None) -> bool:
     """Returns True (and logs it) only the first time this exact signal bar is seen --
     the UNIQUE constraint on (experiment_id, bar_time) is what makes this safe to call
-    on every live check without ever double-alerting the same pending entry.
+    on every live check without ever double-alerting the same pending entry. Also
+    persists the exact trade levels the Telegram message was built from, so the
+    dashboard can show them durably instead of only as text that scrolls away.
     """
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO forward_signal_alerts (experiment_id, bar_time)
-                VALUES (%s, %s)
+                INSERT INTO forward_signal_alerts (experiment_id, bar_time, entry_price, stop_price, target_price)
+                VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (experiment_id, bar_time) DO NOTHING
                 RETURNING id
                 """,
-                (experiment_id, bar_time),
+                (experiment_id, bar_time, entry_price, stop_price, target_price),
             )
             is_new = cur.fetchone() is not None
         conn.commit()

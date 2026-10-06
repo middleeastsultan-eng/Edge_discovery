@@ -184,14 +184,31 @@ def build_promotion_message(experiment_row: dict, forward_stats: TradeStats) -> 
     )
 
 
+def compute_trade_levels(feats: pd.DataFrame, config: BacktestConfig = BacktestConfig()) -> dict:
+    """Entry/stop/target for a pending signal, computed the same way run_backtest()
+    prices a real entry (next bar's reference close, stop/target as ATR multiples).
+    The single source of truth for these numbers -- both the Telegram message and the
+    durable DB record (forward_signal_alerts) are built from this, so what gets texted
+    and what gets persisted can never drift apart.
+    """
+    last = feats.iloc[-1]
+    entry_price = float(last["close"])
+    atr = float(last["atr_14"])
+    stop_price = entry_price - config.sl_atr * atr
+    target_price = entry_price + config.tp_atr * atr
+    expected_move_pct = (target_price - entry_price) / entry_price
+    return {
+        "entry_price": entry_price, "stop_price": stop_price, "target_price": target_price,
+        "expected_move_pct": expected_move_pct,
+    }
+
+
 def build_alert_message(experiment_row: dict, feats: pd.DataFrame, forward_stats: TradeStats,
                          config: BacktestConfig = BacktestConfig()) -> str:
-    last = feats.iloc[-1]
-    entry_ref = float(last["close"])
-    atr = float(last["atr_14"])
-    stop_price = entry_ref - config.sl_atr * atr
-    target_price = entry_ref + config.tp_atr * atr
-    expected_move_pct = (target_price - entry_ref) / entry_ref
+    levels = compute_trade_levels(feats, config)
+    entry_ref, stop_price, target_price, expected_move_pct = (
+        levels["entry_price"], levels["stop_price"], levels["target_price"], levels["expected_move_pct"],
+    )
 
     link = f"{DASHBOARD_URL}/experiments/{experiment_row['id']}" if DASHBOARD_URL else ""
     description = experiment_row.get("plain_english")

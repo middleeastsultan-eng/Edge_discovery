@@ -154,6 +154,9 @@ export type ForwardSignalAlert = {
   experiment_id: number;
   bar_time: string;
   sent_at: string;
+  entry_price: number | null;
+  stop_price: number | null;
+  target_price: number | null;
 };
 
 // Single simulated account that takes signals from promoted patterns only, sized by

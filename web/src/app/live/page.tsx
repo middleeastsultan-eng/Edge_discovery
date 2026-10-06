@@ -4,10 +4,10 @@ import { supabase, type Experiment, type ForwardValidation, type ForwardSignalAl
 import { StatTile } from "@/components/StatTile";
 import { BannerBackground } from "@/components/BannerBackground";
 import { PaperEquityCurve } from "@/components/PaperEquityCurve";
-import { formatDateTime, formatPct, formatR, formatUSD } from "@/lib/format";
+import { formatDateTime, formatNum, formatPct, formatR, formatUSD } from "@/lib/format";
 import {
   TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, BORDER_SOFT,
-  STATUS_GOOD, STATUS_WARNING, TABLE_HEADER_BG, ACCENT, tint,
+  STATUS_GOOD, STATUS_WARNING, STATUS_CRITICAL, TABLE_HEADER_BG, ACCENT, tint,
 } from "@/lib/theme";
 
 export const dynamic = "force-dynamic";
@@ -266,20 +266,39 @@ export default async function LivePage() {
           <div className="rounded-2xl shadow-sm divide-y" style={{ border: `1px solid ${BORDER}`, borderColor: BORDER }}>
             {alerts.map((alert) => {
               const exp = experimentById.get(alert.experiment_id);
+              const hasLevels = alert.entry_price != null && alert.stop_price != null && alert.target_price != null;
               return (
-                <div key={alert.id} className="flex items-center justify-between gap-4 px-4 py-3" style={{ borderColor: BORDER_SOFT }}>
-                  <div className="min-w-0">
-                    <div className="text-sm truncate" style={{ color: TEXT_PRIMARY, fontFamily: "var(--font-geist-mono)" }}>
-                      {exp ? `${exp.symbol} ${exp.interval} -- ${exp.rule}` : `Experiment ${alert.experiment_id}`}
+                <div key={alert.id} className="px-4 py-3" style={{ borderColor: BORDER_SOFT }}>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="text-sm truncate" style={{ color: TEXT_PRIMARY, fontFamily: "var(--font-geist-mono)" }}>
+                        {exp ? `${exp.symbol} ${exp.interval} -- ${exp.rule}` : `Experiment ${alert.experiment_id}`}
+                      </div>
+                      <div className="text-xs mt-0.5" style={{ color: TEXT_MUTED }}>
+                        Signal bar {formatDateTime(alert.bar_time)} -- sent {formatDateTime(alert.sent_at)}
+                      </div>
                     </div>
-                    <div className="text-xs mt-0.5" style={{ color: TEXT_MUTED }}>
-                      Signal bar {formatDateTime(alert.bar_time)} -- sent {formatDateTime(alert.sent_at)}
-                    </div>
+                    {exp && (
+                      <Link href={`/experiments/${exp.id}`} className="shrink-0">
+                        <ArrowRight size={15} style={{ color: TEXT_MUTED }} />
+                      </Link>
+                    )}
                   </div>
-                  {exp && (
-                    <Link href={`/experiments/${exp.id}`} className="shrink-0">
-                      <ArrowRight size={15} style={{ color: TEXT_MUTED }} />
-                    </Link>
+                  {hasLevels && (
+                    <div className="flex items-center gap-4 mt-2.5 text-xs">
+                      <div className="rounded-lg px-2.5 py-1.5" style={{ backgroundColor: tint(TEXT_MUTED, 8) }}>
+                        <span style={{ color: TEXT_MUTED }}>Entry </span>
+                        <span className="font-medium tabular-nums" style={{ color: TEXT_PRIMARY }}>{formatNum(alert.entry_price, 4)}</span>
+                      </div>
+                      <div className="rounded-lg px-2.5 py-1.5" style={{ backgroundColor: tint(STATUS_CRITICAL, 10) }}>
+                        <span style={{ color: TEXT_MUTED }}>Stop </span>
+                        <span className="font-medium tabular-nums" style={{ color: STATUS_CRITICAL }}>{formatNum(alert.stop_price, 4)}</span>
+                      </div>
+                      <div className="rounded-lg px-2.5 py-1.5" style={{ backgroundColor: tint(STATUS_GOOD, 10) }}>
+                        <span style={{ color: TEXT_MUTED }}>Target </span>
+                        <span className="font-medium tabular-nums" style={{ color: STATUS_GOOD }}>{formatNum(alert.target_price, 4)}</span>
+                      </div>
+                    </div>
                   )}
                 </div>
               );

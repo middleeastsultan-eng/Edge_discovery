@@ -83,7 +83,11 @@ def main():
             print("    -> Telegram promotion notice sent (pattern just proved itself live)")
 
         if result.status == "promoted" and result.pending:
-            is_new = db.record_alert_if_new(experiment_id, result.bar_time)
+            levels = live.compute_trade_levels(feats)
+            is_new = db.record_alert_if_new(
+                experiment_id, result.bar_time,
+                entry_price=levels["entry_price"], stop_price=levels["stop_price"], target_price=levels["target_price"],
+            )
             if is_new:
                 send_message(live.build_alert_message(experiment_row, feats, result.forward_stats))
                 alerts_sent += 1
