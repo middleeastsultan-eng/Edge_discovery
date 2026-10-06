@@ -5,7 +5,7 @@ name: Live Signal Check
 # research pipeline already proved -- so a tight schedule is affordable.
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "3,18,33,48 * * * *"
   workflow_dispatch: {}
 
 jobs:

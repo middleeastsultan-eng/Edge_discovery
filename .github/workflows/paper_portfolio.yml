@@ -5,7 +5,7 @@ name: Paper Portfolio
 # trading_lab/paper_portfolio.py guards against overlapping runs regardless.
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "11,26,41,56 * * * *"
   workflow_dispatch: {}
 
 jobs:

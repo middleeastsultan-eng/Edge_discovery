@@ -4,7 +4,7 @@ name: Reddit Strategy Scan
 # Every 6 hours is plenty; trading subreddits don't need 15-minute granularity.
 on:
   schedule:
-    - cron: "0 */6 * * *"
+    - cron: "22 */6 * * *"
   workflow_dispatch: {}
 
 jobs:
