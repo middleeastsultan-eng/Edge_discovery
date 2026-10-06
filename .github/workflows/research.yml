@@ -11,6 +11,13 @@ jobs:
     timeout-minutes: 15
     strategy:
       fail-fast: false
+      # Every job now fetches its OWN symbol's data AND its paired index's (QQQ<->SPY,
+      # for the cross-asset structure-divergence feature) -- double the Alpaca requests
+      # per job, with no shared cache across jobs since each is a fresh ephemeral
+      # runner. Confirmed directly: all 12 combos firing at once tripped Alpaca's
+      # free-tier rate limit mid-pagination (a real run's SPY fetch 429'd). Capping
+      # concurrency spreads that load out instead of bursting it all at once.
+      max-parallel: 4
       matrix:
         include:
           # Nasdaq 100 / S&P 500 only (QQQ/SPY) -- crypto (BTCUSDT/ETHUSDT) was dropped
