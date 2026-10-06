@@ -1,6 +1,7 @@
 """Local cluster research loop: uses your CPU cores to search far more candidates per
 combo than the GitHub Actions schedule can afford under its 15-minute job budget. Runs
-indefinitely (until Ctrl+C) across BTC/ETH/SPY/QQQ, pinging Telegram only when a
+indefinitely (until Ctrl+C) across QQQ/SPY (Nasdaq 100 / S&P 500 only -- crypto
+dropped entirely, same scope as research.yml), pinging Telegram only when a
 finalist's robustness score clears the bar.
 
 This complements the scheduled GitHub Actions workflow, it doesn't replace it -- GitHub
@@ -34,27 +35,12 @@ from trading_lab.explain import describe_rule
 from trading_lab.pipeline import is_novel_pass, is_pass, run_experiment
 from trading_lab.telegram import send_message
 
-# (source, symbol, interval, start, end) -- each source has its own valid date range:
-# Coinbase has deep crypto history; Alpaca's free IEX feed only goes back to ~2020-08.
-# 1-minute is bounded to the last ~2 years (not full history) to stay tractable --
-# ~15x denser than 15-minute. No local-loop equivalent of research.yml's per-combo
-# n_candidates tuning is needed here since this loop uses one shared --n-candidates
-# flag across all combos (see module docstring).
+# (source, symbol, interval, start, end) -- Alpaca's free IEX feed only goes back to
+# ~2020-08. 1-minute is bounded to the last ~2 years (not full history) to stay
+# tractable -- ~15x denser than 15-minute. No local-loop equivalent of research.yml's
+# per-combo n_candidates tuning is needed here since this loop uses one shared
+# --n-candidates flag across all combos (see module docstring).
 DEFAULT_COMBOS = [
-    ("crypto", "BTCUSDT", "1m", "2024-01-01", "2026-01-01"),
-    ("crypto", "BTCUSDT", "5m", "2019-01-01", "2026-01-01"),
-    ("crypto", "BTCUSDT", "15m", "2019-01-01", "2026-01-01"),
-    ("crypto", "BTCUSDT", "30m", "2019-01-01", "2026-01-01"),
-    ("crypto", "BTCUSDT", "1h", "2019-01-01", "2026-01-01"),
-    ("crypto", "BTCUSDT", "4h", "2019-01-01", "2026-01-01"),
-    ("crypto", "BTCUSDT", "1d", "2019-01-01", "2026-01-01"),
-    ("crypto", "ETHUSDT", "1m", "2024-01-01", "2026-01-01"),
-    ("crypto", "ETHUSDT", "5m", "2019-01-01", "2026-01-01"),
-    ("crypto", "ETHUSDT", "15m", "2019-01-01", "2026-01-01"),
-    ("crypto", "ETHUSDT", "30m", "2019-01-01", "2026-01-01"),
-    ("crypto", "ETHUSDT", "1h", "2019-01-01", "2026-01-01"),
-    ("crypto", "ETHUSDT", "4h", "2019-01-01", "2026-01-01"),
-    ("crypto", "ETHUSDT", "1d", "2019-01-01", "2026-01-01"),
     ("stocks", "SPY", "1Min", "2024-01-01", "2026-01-01"),
     ("stocks", "SPY", "5Min", "2020-08-01", "2026-01-01"),
     ("stocks", "SPY", "15Min", "2020-08-01", "2026-01-01"),

@@ -1,7 +1,7 @@
 """One detailed, interactive research run: fetch data -> discover -> funnel -> validate.
 
 Usage:
-    python run_research.py --symbol BTCUSDT --interval 1h --start 2019-01-01 --end 2026-01-01
+    python run_research.py --symbol QQQ --interval 1Hour --start 2020-08-01 --end 2026-01-01
     python run_research.py --source stocks --symbol SPY --interval 15Min --start 2020-08-01 --end 2026-01-01
 
 For unattended searching across multiple assets with Telegram notifications,
@@ -63,10 +63,10 @@ def print_finalist(f: dict) -> None:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--source", choices=["crypto", "stocks"], default="crypto")
-    parser.add_argument("--symbol", default="BTCUSDT", help="e.g. BTCUSDT (crypto) or SPY/QQQ (stocks)")
-    parser.add_argument("--interval", default="1h", help="crypto: 15m/1h/4h/1d -- stocks: 15Min/1Hour/1Day (Alpaca format)")
-    parser.add_argument("--start", default="2019-01-01", help="stocks: free Alpaca data starts ~2020-08")
+    parser.add_argument("--source", choices=["crypto", "stocks"], default="stocks")
+    parser.add_argument("--symbol", default="QQQ", help="SPY/QQQ (stocks, the platform's current focus) -- crypto symbols like BTCUSDT still work if you pass --source crypto")
+    parser.add_argument("--interval", default="1Hour", help="stocks: 15Min/1Hour/1Day (Alpaca format) -- crypto: 15m/1h/4h/1d")
+    parser.add_argument("--start", default="2020-08-01", help="stocks: free Alpaca data starts ~2020-08")
     parser.add_argument("--end", default="2026-01-01")
     parser.add_argument("--n-candidates", type=int, default=3000)
     parser.add_argument("--discovery-min-trades", type=int, default=100)
