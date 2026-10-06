@@ -35,7 +35,7 @@ from trading_lab.pipeline import is_novel_pass, is_pass, run_experiment
 from trading_lab.telegram import send_message
 
 # (source, symbol, interval, start, end) -- each source has its own valid date range:
-# Binance has full crypto history; Alpaca's free IEX feed only goes back to ~2020-08.
+# Coinbase has deep crypto history; Alpaca's free IEX feed only goes back to ~2020-08.
 # 1-minute is bounded to the last ~2 years (not full history) to stay tractable --
 # ~15x denser than 15-minute. No local-loop equivalent of research.yml's per-combo
 # n_candidates tuning is needed here since this loop uses one shared --n-candidates

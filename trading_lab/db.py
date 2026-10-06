@@ -69,15 +69,15 @@ ALTER TABLE experiments ADD COLUMN IF NOT EXISTS robustness_score JSONB;
 ALTER TABLE experiments ADD COLUMN IF NOT EXISTS research_run_id INTEGER REFERENCES research_runs(id) ON DELETE SET NULL;
 ALTER TABLE experiments ADD COLUMN IF NOT EXISTS information_test JSONB;
 
--- Needed so the live-signal checker knows which data source (Binance vs Alpaca) to
--- query for a given experiment without a join -- research_runs.source existed, but was
--- never threaded onto the experiment row itself. Backfill from the linked run once.
+-- Needed so the live-signal checker knows which data source (crypto exchange vs Alpaca)
+-- to query for a given experiment without a join -- research_runs.source existed, but
+-- was never threaded onto the experiment row itself. Backfill from the linked run once.
 ALTER TABLE experiments ADD COLUMN IF NOT EXISTS source TEXT;
 UPDATE experiments e SET source = rr.source
     FROM research_runs rr WHERE e.research_run_id = rr.id AND e.source IS NULL;
 -- A handful of the earliest rows predate research_run_id entirely (no run to join to).
 -- Their symbol is unambiguous in this codebase (BTCUSDT/ETHUSDT are only ever fetched
--- from Binance, SPY/QQQ only ever from Alpaca), so infer source directly as a fallback.
+-- from the crypto source, SPY/QQQ only ever from Alpaca), so infer source as a fallback.
 UPDATE experiments SET source = 'crypto' WHERE source IS NULL AND symbol IN ('BTCUSDT', 'ETHUSDT');
 UPDATE experiments SET source = 'stocks' WHERE source IS NULL AND symbol IN ('SPY', 'QQQ');
 
