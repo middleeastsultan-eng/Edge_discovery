@@ -81,6 +81,10 @@ UPDATE experiments e SET source = rr.source
 UPDATE experiments SET source = 'crypto' WHERE source IS NULL AND symbol IN ('BTCUSDT', 'ETHUSDT');
 UPDATE experiments SET source = 'stocks' WHERE source IS NULL AND symbol IN ('SPY', 'QQQ');
 
+-- Direction of the signal: 'long' or 'short'. Defaults to 'long' for backward
+-- compatibility with existing experiments that were all long-only.
+ALTER TABLE experiments ADD COLUMN IF NOT EXISTS direction TEXT NOT NULL DEFAULT 'long';
+
 -- Plain-English translation of `rule`, for dashboard/Telegram readability -- pure
 -- translation layer (see trading_lab/explain.py), never used in any scoring, filtering,
 -- or pattern-selection logic. NULL for the vast majority of experiments (only the ones
@@ -349,6 +353,7 @@ def save_experiment(
     source: str | None = None,
     origin: str = "discovery",
     reddit_strategy_id: int | None = None,
+    direction: str = "long",
 ) -> int:
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -358,8 +363,8 @@ def save_experiment(
                     (symbol, interval, start_date, end_date, rule, clauses,
                      discovery_stats, validation_stats, test_stats, walk_forward, monte_carlo,
                      cost_stress, parameter_stability, robustness_score, research_run_id, information_test, source,
-                     origin, reddit_strategy_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     origin, reddit_strategy_id, direction)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
@@ -378,6 +383,7 @@ def save_experiment(
                     source,
                     origin,
                     reddit_strategy_id,
+                    direction,
                 ),
             )
             experiment_id = cur.fetchone()[0]

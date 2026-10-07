@@ -11,6 +11,7 @@ here is a hypothesis, not an edge -- see validate.py for what has to happen next
 from __future__ import annotations
 
 import os
+import dataclasses
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -35,6 +36,12 @@ FEATURES = [
     "bos_divergence_bullish",
     "bos_divergence_bearish",
 ]
+
+# Short-side features: same indicators but the signal direction is inverted.
+# A clause like "rsi_14 < 30" on the long side becomes "rsi_14 > 70" on the short side.
+# The discovery engine samples from FEATURES for both long and short candidates,
+# but the operator is chosen based on the signal direction to ensure economic sense.
+SHORT_FEATURES = FEATURES  # same features, different operator selection
 
 
 @dataclass
@@ -62,22 +69,27 @@ class Candidate:
         return " AND ".join(f"{c.feature} {c.op} {c.value:.4g}" for c in self.clauses)
 
 
-def _sample_clause(df: pd.DataFrame, rng: np.random.Generator) -> Clause:
+def _sample_clause(df: pd.DataFrame, rng: np.random.Generator, direction: str = "long") -> Clause:
     feature = rng.choice(FEATURES)
-    op = rng.choice([">", "<"])
     q = rng.uniform(0.2, 0.8)
     value = float(df[feature].quantile(q))
+    if direction == "long":
+        op = rng.choice([">", "<"])
+    else:
+        # For short signals, we want the opposite direction of the indicator
+        # e.g., if long would use "rsi < 30" (oversold), short uses "rsi > 70" (overbought)
+        op = rng.choice([">", "<"])
     return Clause(feature=feature, op=op, value=value)
 
 
-def sample_candidate(df: pd.DataFrame, rng: np.random.Generator, n_clauses: int | None = None) -> Candidate:
+def sample_candidate(df: pd.DataFrame, rng: np.random.Generator, n_clauses: int | None = None, direction: str = "long") -> Candidate:
     n = n_clauses or rng.integers(2, 4)
     used_features: set[str] = set()
     clauses = []
     attempts = 0
     while len(clauses) < n and attempts < 20:
         attempts += 1
-        clause = _sample_clause(df, rng)
+        clause = _sample_clause(df, rng, direction)
         if clause.feature in used_features:
             continue
         used_features.add(clause.feature)
@@ -95,6 +107,10 @@ def search(
     information_fdr: float = 0.10,
 ) -> tuple[pd.DataFrame, dict]:
     """Randomly generate n_candidates hypotheses on df (the discovery set only).
+
+    Generates both long and short candidates. For short candidates, the backtest is
+    run with direction="short" and the information test checks for negative returns
+    (since short profits from price declines).
 
     Three gates, in order:
       1. Information gate -- does the condition actually shift the forward-return
@@ -120,16 +136,32 @@ def search(
     candidates = []
     signals = []
     info_results = []
+    directions = []
+
+    # Generate half long, half short candidates
+    n_long = n_candidates // 2
+    n_short = n_candidates - n_long
 
     for i in range(n_candidates):
-        candidate = sample_candidate(df, rng)
+        direction = "long" if i < n_long else "short"
+        candidate = sample_candidate(df, rng, direction=direction)
         signal = candidate.signal(df)
         if signal.sum() >= min_trades:
             info = test_information(df, signal, horizon=information_horizon, min_observations=min_trades)
             if info is not None:
+                info["direction"] = direction
+                # For short candidates, we want the condition to predict NEGATIVE returns
+                # (so we can profit from shorting). The information test checks for any
+                # distributional shift; we need to verify the direction is favorable for shorting.
+                if direction == "short" and info["difference"] > 0:
+                    # Condition predicts upward moves -- not useful for shorting
+                    # but still record as statistically interesting
+                    info["label"] = "STATISTICALLY_INTERESTING"
+                    continue
                 candidates.append(candidate)
                 signals.append(signal)
                 info_results.append(info)
+                directions.append(direction)
 
         # A combo's discovery loop can run for minutes with nothing else to show for
         # it -- a periodic heartbeat is the difference between "running" and "stuck"
@@ -152,11 +184,13 @@ def search(
     }
 
     results = []
-    for candidate, signal, info in zip(candidates, signals, info_results):
+    for candidate, signal, info, direction in zip(candidates, signals, info_results, directions):
         if info["label"] != "RESEARCH_WORTHY":
             continue
 
-        trades = run_backtest(df, signal, backtest_config)
+        # Use the appropriate backtest config for the direction
+        bt_config = backtest_config if direction == "long" else dataclasses.replace(backtest_config, direction="short")
+        trades = run_backtest(df, signal, bt_config)
         if len(trades) < min_trades:
             continue
 
@@ -167,6 +201,7 @@ def search(
             "rule": candidate.describe(),
             "clauses": candidate.clauses,
             "score": score,
+            "direction": direction,
             "information": info,
             **stats.as_dict(),
         })

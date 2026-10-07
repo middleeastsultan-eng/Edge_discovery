@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Sidebar } from "@/components/Sidebar";
 import { MobileNav } from "@/components/MobileNav";
@@ -47,13 +48,15 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: NO_FLASH_SCRIPT }} />
-      </head>
       <body
         className="min-h-full flex"
         style={{ backgroundColor: "var(--tl-page)", color: "var(--tl-text-primary)" }}
       >
+        <Script
+          id="theme-script"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{ __html: NO_FLASH_SCRIPT }}
+        />
         <Sidebar settings={settings} />
         <div className="flex-1 flex flex-col min-w-0">
           <MobileNav />

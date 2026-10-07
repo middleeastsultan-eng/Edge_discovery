@@ -1,7 +1,8 @@
-"""Long-only, non-overlapping trade simulator with ATR-based stop/target, fees and slippage.
+"""Non-overlapping trade simulator with ATR-based stop/target, fees and slippage.
 
-Deliberately simple (v0.1): one trade at a time, fixed R-multiple exits, next-bar entry.
-This is the piece that must be trustworthy before anything else matters.
+Supports both long and short positions. Deliberately simple (v0.1): one trade at a
+time, fixed R-multiple exits, next-bar entry. This is the piece that must be
+trustworthy before anything else matters.
 """
 
 from __future__ import annotations
@@ -19,15 +20,21 @@ class BacktestConfig:
     max_holding_bars: int = 48
     fee_bps: float = 4.0       # per side, in basis points of notional
     slippage_bps: float = 2.0  # per side, in basis points of notional
+    direction: str = "long"    # "long" or "short"
 
 
 def run_backtest(df: pd.DataFrame, entry_signal: pd.Series, config: BacktestConfig = BacktestConfig()) -> pd.DataFrame:
-    """Simulate long trades triggered by entry_signal against df's OHLC + atr_14 column.
+    """Simulate trades triggered by entry_signal against df's OHLC + atr_14 column.
+
+    Supports both long and short positions via config.direction. For long positions,
+    stop is below entry and target is above. For short positions, stop is above entry
+    and target is below.
 
     Returns a DataFrame of closed trades: entry_time, exit_time, entry_price, exit_price,
     exit_reason, r_multiple, bars_held.
     """
     assert "atr_14" in df.columns, "df must include atr_14 (run build_features first)"
+    assert config.direction in ("long", "short"), f"direction must be 'long' or 'short', got {config.direction!r}"
 
     opens = df["open"].to_numpy()
     highs = df["high"].to_numpy()
@@ -39,6 +46,7 @@ def run_backtest(df: pd.DataFrame, entry_signal: pd.Series, config: BacktestConf
     n = len(df)
     fee_frac = config.fee_bps / 10_000
     slip_frac = config.slippage_bps / 10_000
+    is_long = config.direction == "long"
 
     trades = []
     i = 0
@@ -52,10 +60,18 @@ def run_backtest(df: pd.DataFrame, entry_signal: pd.Series, config: BacktestConf
             break
 
         raw_entry = opens[entry_idx]
-        entry_price = raw_entry * (1 + slip_frac)  # buying: slippage worsens fill
         entry_atr = atr[i]
-        stop_price = raw_entry - config.sl_atr * entry_atr
-        target_price = raw_entry + config.tp_atr * entry_atr
+
+        if is_long:
+            # Long: buy at open, stop below, target above
+            entry_price = raw_entry * (1 + slip_frac)  # buying: slippage worsens fill
+            stop_price = raw_entry - config.sl_atr * entry_atr
+            target_price = raw_entry + config.tp_atr * entry_atr
+        else:
+            # Short: sell at open, stop above, target below
+            entry_price = raw_entry * (1 - slip_frac)  # selling: slippage worsens fill
+            stop_price = raw_entry + config.sl_atr * entry_atr
+            target_price = raw_entry - config.tp_atr * entry_atr
 
         exit_price = None
         exit_reason = None
@@ -63,16 +79,28 @@ def run_backtest(df: pd.DataFrame, entry_signal: pd.Series, config: BacktestConf
 
         last_bar = min(entry_idx + config.max_holding_bars, n - 1)
         for j in range(entry_idx, last_bar + 1):
-            if lows[j] <= stop_price:
-                exit_price = stop_price * (1 - slip_frac)
-                exit_reason = "stop"
-                exit_j = j
-                break
-            if highs[j] >= target_price:
-                exit_price = target_price * (1 - slip_frac)
-                exit_reason = "target"
-                exit_j = j
-                break
+            if is_long:
+                if lows[j] <= stop_price:
+                    exit_price = stop_price * (1 - slip_frac)
+                    exit_reason = "stop"
+                    exit_j = j
+                    break
+                if highs[j] >= target_price:
+                    exit_price = target_price * (1 - slip_frac)
+                    exit_reason = "target"
+                    exit_j = j
+                    break
+            else:
+                if highs[j] >= stop_price:
+                    exit_price = stop_price * (1 + slip_frac)
+                    exit_reason = "stop"
+                    exit_j = j
+                    break
+                if lows[j] <= target_price:
+                    exit_price = target_price * (1 + slip_frac)
+                    exit_reason = "target"
+                    exit_j = j
+                    break
 
         if exit_price is None:
             if last_bar >= n - 1:
@@ -88,13 +116,20 @@ def run_backtest(df: pd.DataFrame, entry_signal: pd.Series, config: BacktestConf
             # bar, not last_bar itself, so exit_time/bars_held reflect when the position
             # actually closed rather than the bar that merely triggered the decision.
             exit_j = last_bar + 1
-            exit_price = opens[exit_j] * (1 - slip_frac)
+            if is_long:
+                exit_price = opens[exit_j] * (1 - slip_frac)
+            else:
+                exit_price = opens[exit_j] * (1 + slip_frac)
             exit_reason = "time"
 
-        # entry_price (not raw_entry) so the realized R-multiple reflects the full
-        # round-trip slippage cost actually paid, not just the exit side of it.
-        gross_r = (exit_price - entry_price) / (config.sl_atr * entry_atr)
-        fee_r = (fee_frac * 2) / ((config.sl_atr * entry_atr) / raw_entry)
+        # R-multiple: for longs, (exit - entry) / (entry - stop); for shorts, (entry - exit) / (stop - entry)
+        # Both normalize to "how many times the risk did we make/lose"
+        risk = config.sl_atr * entry_atr
+        if is_long:
+            gross_r = (exit_price - entry_price) / risk
+        else:
+            gross_r = (entry_price - exit_price) / risk
+        fee_r = (fee_frac * 2) / (risk / raw_entry)
         r_multiple = gross_r - fee_r
 
         trades.append({

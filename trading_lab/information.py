@@ -96,12 +96,20 @@ def classify_economic_significance(
     NOT a fixed number shared across every asset/timeframe. A 0.10% move means something
     different on BTC 15m than on SPY 1h because the cost to capture it differs.
 
-    The backtester here is long-only, so only a POSITIVE difference (condition predicts
-    upward moves) is currently exploitable -- a strong negative difference is real
-    information but gets held at STATISTICALLY_INTERESTING until short support exists.
+    For long signals, we want positive differences (condition predicts upward moves).
+    For short signals, we want negative differences (condition predicts downward moves).
+    The `direction` field in `info` (if present) determines which is economically
+    significant. If no direction is specified, only positive differences are considered
+    (backward compatible with the original long-only behavior).
     """
     gross_edge = info["difference"]
-    net_edge = gross_edge - cost_estimate
+    direction = info.get("direction", "long")
+
+    if direction == "short":
+        # For shorts, the edge is the magnitude of the negative difference
+        net_edge = -gross_edge - cost_estimate
+    else:
+        net_edge = gross_edge - cost_estimate
 
     if q_value > fdr:
         label = "REJECTED"

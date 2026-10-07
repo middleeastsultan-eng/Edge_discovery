@@ -26,6 +26,7 @@ from discovery-set noise is exactly the one that selection process favors. Inste
 
 from __future__ import annotations
 
+import dataclasses
 import pandas as pd
 
 from . import db
@@ -123,7 +124,9 @@ def run_experiment(
     survivors = []
     for _, row in top_candidates.iterrows():
         cand_obj = Candidate(clauses=row["clauses"])
-        val_stats, val_trades = evaluate_candidate(val_df, cand_obj, config)
+        direction = row.get("direction", "long")
+        val_config = dataclasses.replace(config, direction=direction) if direction != "long" else config
+        val_stats, val_trades = evaluate_candidate(val_df, cand_obj, val_config)
         if val_stats.n_trades >= validation_min_trades and val_stats.expectancy_r > 0:
             survivors.append((row, cand_obj, val_stats, val_trades))
 
@@ -143,7 +146,9 @@ def run_experiment(
         )
 
     for row, cand_obj, val_stats, val_trades in finalist_inputs:
-        test_stats, test_trades = evaluate_candidate(test_df, cand_obj, config)
+        direction = row.get("direction", "long")
+        test_config = dataclasses.replace(config, direction=direction) if direction != "long" else config
+        test_stats, test_trades = evaluate_candidate(test_df, cand_obj, test_config)
         if test_stats.n_trades < test_min_trades:
             continue
 
@@ -169,10 +174,10 @@ def run_experiment(
         # walk_forward_stability -- one of robustness_score's components -- for every
         # candidate, the opposite of what the rest of the scoring scheme is careful about.
         oos_df = pd.concat([val_df, test_df])
-        wf = walk_forward(oos_df, cand_obj, n_windows=6, config=config)
+        wf = walk_forward(oos_df, cand_obj, n_windows=6, config=test_config)
         mc = monte_carlo(test_trades["r_multiple"]) if len(test_trades) else None
-        cs = cost_stress(test_df, cand_obj, config)
-        pert = parameter_perturbation(discovery_df, cand_obj, config)
+        cs = cost_stress(test_df, cand_obj, test_config)
+        pert = parameter_perturbation(discovery_df, cand_obj, test_config)
         stability = parameter_stability_score(pert)
         score = robustness_score(discovery_stats, val_stats, test_stats, wf, stability, cs, test_trades)
 
@@ -190,6 +195,7 @@ def run_experiment(
                 research_run_id=research_run_id,
                 information_test=row.get("information"),
                 source=source,
+                direction=direction,
             )
             db.save_trades(experiment_id, val_trades, "validation")
             db.save_trades(experiment_id, test_trades, "test")

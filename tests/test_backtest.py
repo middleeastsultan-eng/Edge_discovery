@@ -139,3 +139,46 @@ def test_no_overlapping_trades():
     exits = trades["exit_time"].tolist()
     for i in range(1, len(trades)):
         assert entries[i] > exits[i - 1], "a later trade entered before the previous one's recorded exit"
+
+
+def test_short_stop_hit_produces_negative_r_multiple():
+    """A short position where price only rises must hit the stop (above entry) and lose."""
+    n = 10
+    idx = pd.date_range("2024-01-01", periods=n, freq="1h", tz="UTC")
+    df = pd.DataFrame(
+        {"open": 100.0, "high": [100.0] + [110.0] * (n - 1), "low": 100.0, "close": 100.0, "atr_14": 1.0},
+        index=idx,
+    )
+    signal = pd.Series(False, index=idx)
+    signal.iloc[0] = True
+    trades = run_backtest(df, signal, BacktestConfig(sl_atr=1.0, tp_atr=2.0, fee_bps=0, slippage_bps=0, direction="short"))
+    assert len(trades) == 1
+    assert trades.iloc[0]["exit_reason"] == "stop"
+    assert trades.iloc[0]["r_multiple"] < 0
+
+
+def test_short_target_hit_produces_positive_r_multiple():
+    """A short position where price only falls must hit the target (below entry) and win."""
+    n = 10
+    idx = pd.date_range("2024-01-01", periods=n, freq="1h", tz="UTC")
+    df = pd.DataFrame(
+        {"open": 100.0, "high": 100.0, "low": [100.0] + [90.0] * (n - 1), "close": 100.0, "atr_14": 1.0},
+        index=idx,
+    )
+    signal = pd.Series(False, index=idx)
+    signal.iloc[0] = True
+    trades = run_backtest(df, signal, BacktestConfig(sl_atr=1.0, tp_atr=2.0, fee_bps=0, slippage_bps=0, direction="short"))
+    assert len(trades) == 1
+    assert trades.iloc[0]["exit_reason"] == "target"
+    assert trades.iloc[0]["r_multiple"] > 0
+
+
+def test_short_entry_slippage_decreases_sell_price():
+    """Shorting costs more with slippage -- entry_price must be below the raw bar open."""
+    df = _flat_df(10)
+    signal = pd.Series(False, index=df.index)
+    signal.iloc[0] = True
+    config = BacktestConfig(slippage_bps=50.0, max_holding_bars=5, direction="short")
+    trades = run_backtest(df, signal, config)
+    assert len(trades) == 1
+    assert trades.iloc[0]["entry_price"] < df["open"].iloc[1]

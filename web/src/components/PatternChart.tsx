@@ -88,10 +88,16 @@ export function PatternChart({
   const primarySeriesRef = useRef<ISeriesApi<SeriesType> | null>(null);
   const otherSeriesRef = useRef<ISeriesApi<SeriesType> | null>(null);
   const colorsRef = useRef({ good: "", bad: "", blue: "", teal: "" });
-  // Visible time range captured right before a rebuild (toggle change, timeframe switch,
-  // live auto-refresh) and restored after -- so flipping a checkbox never snaps the user
-  // back out to fitContent(). Only the very first build (this stays null) fits all data.
-  const savedRangeRef = useRef<{ from: UTCTimestamp; to: UTCTimestamp } | null>(null);
+  // Visible LOGICAL range (fractional bar indices, not timestamps) captured right before
+  // a rebuild (toggle change, timeframe switch, live auto-refresh) and restored after --
+  // so flipping a checkbox never snaps the user back out to fitContent(). Only the very
+  // first build (this stays null) fits all data. Deliberately logical rather than
+  // time-based: setVisibleRange({from, to}) only pins the window's start/end timestamps,
+  // and lightweight-charts recomputes bar spacing from scratch for that window on a
+  // rebuild -- confirmed directly, this does NOT reproduce the original zoom level (it
+  // was cramming ~40% fewer bars into an identical [from, to] after a toggle, rendered
+  // wider). setVisibleLogicalRange() pins the actual bar count/zoom and round-trips exactly.
+  const savedRangeRef = useRef<{ from: number; to: number } | null>(null);
 
   const [showOtherIndex, setShowOtherIndex] = useState(true);
   const [showPrimaryIndex, setShowPrimaryIndex] = useState(true);
@@ -379,18 +385,21 @@ export function PatternChart({
     if (showOther) chart.subscribeCrosshairMove(handleCrosshairMove);
 
     // Preserve whatever the user was looking at across a toggle/style change or a
-    // silent live auto-refresh (savedRangeRef set in the cleanup below). On a true first
+    // silent live auto-refresh (savedRangeRef set continuously below). On a true first
     // mount there's nothing saved yet -- in liveMode, default to "the present" (the most
     // recent bars) rather than fitContent's zoomed-out view of the whole fetched window;
     // a timeframe switch clears savedRangeRef up front for the same reason (see
     // switchTimeframe) so picking a new resolution also lands on "now," not wherever the
     // old resolution happened to be scrolled to.
-    if (savedRangeRef.current) {
-      chart.timeScale().setVisibleRange(savedRangeRef.current);
-    } else if (liveMode && liveCandles.length > PRESENT_WINDOW_BARS) {
-      const from = liveCandles[liveCandles.length - PRESENT_WINDOW_BARS].time as UTCTimestamp;
-      const to = liveCandles[liveCandles.length - 1].time as UTCTimestamp;
-      chart.timeScale().setVisibleRange({ from, to });
+    const targetRange: { from: number; to: number } | null =
+      savedRangeRef.current
+        ? savedRangeRef.current
+        : liveMode && liveCandles.length > PRESENT_WINDOW_BARS
+          ? { from: liveCandles.length - PRESENT_WINDOW_BARS, to: liveCandles.length - 1 }
+          : null;
+
+    if (targetRange) {
+      chart.timeScale().setVisibleLogicalRange(targetRange);
     } else {
       chart.timeScale().fitContent();
     }
@@ -398,11 +407,17 @@ export function PatternChart({
     // Track the visible range continuously as the user pans/zooms (mouse drag, wheel,
     // pinch) rather than only sampling it once at teardown -- a rebuild can be triggered
     // by a live auto-refresh at any arbitrary moment, and relying on a single read at
-    // cleanup time was missing the user's actual current position in practice.
-    const handleVisibleRangeChange = (range: Parameters<Parameters<ReturnType<IChartApi["timeScale"]>["subscribeVisibleTimeRangeChange"]>[0]>[0]) => {
-      if (range) savedRangeRef.current = range as { from: UTCTimestamp; to: UTCTimestamp };
+    // cleanup time was missing the user's actual current position in practice. Logical
+    // (bar-index) range, not time range: setVisibleRange({from, to}) only pins the
+    // window's start/end timestamps, and lightweight-charts recomputes bar spacing from
+    // scratch for that window on every rebuild -- confirmed directly, that does NOT
+    // reproduce the original zoom level (it was cramming ~40% fewer bars into an
+    // identical [from, to] after a toggle, rendered wider -- the actual "visual shift").
+    // setVisibleLogicalRange() pins the real bar count/zoom and round-trips exactly.
+    const handleVisibleLogicalRangeChange = (range: Parameters<Parameters<ReturnType<IChartApi["timeScale"]>["subscribeVisibleLogicalRangeChange"]>[0]>[0]) => {
+      if (range) savedRangeRef.current = { from: range.from, to: range.to };
     };
-    chart.timeScale().subscribeVisibleTimeRangeChange(handleVisibleRangeChange);
+    chart.timeScale().subscribeVisibleLogicalRangeChange(handleVisibleLogicalRangeChange);
 
     const handleResize = () => {
       if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth });
@@ -412,7 +427,7 @@ export function PatternChart({
     return () => {
       window.removeEventListener("resize", handleResize);
       if (showOther) chart.unsubscribeCrosshairMove(handleCrosshairMove);
-      chart.timeScale().unsubscribeVisibleTimeRangeChange(handleVisibleRangeChange);
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleLogicalRangeChange);
       chart.remove();
     };
   }, [
@@ -509,7 +524,7 @@ export function PatternChart({
         </div>
       </div>
       {shownRange && (
-        <p className="text-xs mb-2" style={{ color: TEXT_MUTED }}>
+        <p className="text-xs mb-2" style={{ color: TEXT_MUTED }} suppressHydrationWarning>
           {liveMode && (
             <span className="inline-flex items-center gap-1.5 mr-2">
               <span className="relative inline-flex h-1.5 w-1.5">

@@ -17,6 +17,7 @@ frozen; this only asks "does reality still agree with it."
 
 from __future__ import annotations
 
+import dataclasses
 import re
 from dataclasses import dataclass
 
@@ -173,7 +174,9 @@ def check_pattern(experiment_row: dict, feats: pd.DataFrame, config: BacktestCon
 
     candidate = Candidate(clauses=[Clause(**c) for c in experiment_row["clauses"]])
     signal = candidate.signal(feats)
-    trades = run_backtest(feats, signal, config)
+    direction = experiment_row.get("direction", "long")
+    bt_config = dataclasses.replace(config, direction=direction) if direction != "long" else config
+    trades = run_backtest(feats, signal, bt_config)
 
     existing = db.get_trades(experiment_id, "forward")
     existing_entry_times = set(pd.to_datetime(existing["entry_time"], utc=True)) if len(existing) else set()
@@ -226,8 +229,12 @@ def compute_trade_levels(feats: pd.DataFrame, config: BacktestConfig = BacktestC
     last = feats.iloc[-1]
     entry_price = float(last["close"])
     atr = float(last["atr_14"])
-    stop_price = entry_price - config.sl_atr * atr
-    target_price = entry_price + config.tp_atr * atr
+    if config.direction == "short":
+        stop_price = entry_price + config.sl_atr * atr
+        target_price = entry_price - config.tp_atr * atr
+    else:
+        stop_price = entry_price - config.sl_atr * atr
+        target_price = entry_price + config.tp_atr * atr
     expected_move_pct = (target_price - entry_price) / entry_price
     return {
         "entry_price": entry_price, "stop_price": stop_price, "target_price": target_price,
@@ -237,7 +244,9 @@ def compute_trade_levels(feats: pd.DataFrame, config: BacktestConfig = BacktestC
 
 def build_alert_message(experiment_row: dict, feats: pd.DataFrame, forward_stats: TradeStats,
                          config: BacktestConfig = BacktestConfig()) -> str:
-    levels = compute_trade_levels(feats, config)
+    direction = experiment_row.get("direction", "long")
+    bt_config = dataclasses.replace(config, direction=direction) if direction != "long" else config
+    levels = compute_trade_levels(feats, bt_config)
     entry_ref, stop_price, target_price, expected_move_pct = (
         levels["entry_price"], levels["stop_price"], levels["target_price"], levels["expected_move_pct"],
     )
@@ -245,14 +254,15 @@ def build_alert_message(experiment_row: dict, feats: pd.DataFrame, forward_stats
     link = f"{DASHBOARD_URL}/experiments/{experiment_row['id']}" if DASHBOARD_URL else ""
     description = experiment_row.get("plain_english")
 
+    direction_label = "SHORT" if direction == "short" else "LONG"
     return (
-        f"Trade signal -- {experiment_row['symbol']} {experiment_row['interval']}\n\n"
+        f"Trade signal -- {experiment_row['symbol']} {experiment_row['interval']} ({direction_label})\n\n"
         f"Pattern: {experiment_row['rule']}\n"
         + (f"In plain English: {description}\n" if description else "")
         + f"Forward track record: {forward_stats.n_trades} trades, "
         f"{forward_stats.win_rate:.0%} win rate, {forward_stats.expectancy_r:.3f}R expectancy\n\n"
         f"Entry: next bar open (~{entry_ref:.4g})\n"
         f"Stop: {stop_price:.4g}   Target: {target_price:.4g}\n"
-        f"Expected move: {expected_move_pct:+.2%} ({config.tp_atr:.1f}R target / {config.sl_atr:.1f}R stop)"
+        f"Expected move: {expected_move_pct:+.2%} ({bt_config.tp_atr:.1f}R target / {bt_config.sl_atr:.1f}R stop)"
         + (f"\n\n{link}" if link else "")
     )
