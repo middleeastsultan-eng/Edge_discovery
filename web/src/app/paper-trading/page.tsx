@@ -11,9 +11,13 @@ export const dynamic = 'force-dynamic';
 // Must match trading_lab/paper_portfolio.py's STARTING_EQUITY.
 const STARTING_EQUITY = 10_000;
 
+// Maps experiment_id -> { symbol, interval, rule }
+const experimentCache = new Map<number, { symbol: string; interval: string; rule: string }>();
+
 export default async function PaperTradingPage() {
+  // Fetch trades + experiment metadata in parallel
   let paperTrades: PaperTrade[] = [];
-  let paperAccount: PaperAccount = { id: 1, equity: STARTING_EQUITY, watermark: null };
+  let paperAccount: PaperAccount = { equity: STARTING_EQUITY, watermark: null };
 
   try {
     const [tradesResult, accountResult] = await Promise.all([
@@ -25,16 +29,32 @@ export default async function PaperTradingPage() {
     if (accountResult.error) throw accountResult.error;
 
     paperTrades = (tradesResult.data ?? []) as PaperTrade[];
-    paperAccount = (accountResult.data ?? { id: 1, equity: STARTING_EQUITY, watermark: null }) as PaperAccount;
+    paperAccount = (accountResult.data ?? { equity: STARTING_EQUITY, watermark: null }) as PaperAccount;
+
+    // Build experiment lookup for symbol/interval/rule
+    const experimentIds = [...new Set(paperTrades.map((t) => t.experiment_id))];
+    for (const eid of experimentIds) {
+      const { data: expData } = await supabase
+        .from('experiments')
+        .select('symbol, interval, rule')
+        .eq('id', eid)
+        .single();
+      if (expData) {
+        experimentCache.set(eid, {
+          symbol: expData.symbol,
+          interval: expData.interval,
+          rule: expData.rule,
+        });
+      }
+    }
   } catch (err: any) {
     console.error('Failed to load paper trading data:', err);
-    // Fallback to defaults -- the page still renders, just without live data
   }
 
   // Calculate metrics
   const paperReturnPct = paperAccount.equity / STARTING_EQUITY - 1;
   const paperWinRate = paperTrades.length
-    ? paperTrades.filter(t => t.pnl_dollars > 0).length / paperTrades.length
+    ? paperTrades.filter((t) => t.pnl_dollars > 0).length / paperTrades.length
     : null;
 
   const paperMaxDrawdown = paperTrades.reduce(
@@ -49,9 +69,28 @@ export default async function PaperTradingPage() {
     ? paperTrades.reduce((sum, t) => sum + t.pnl_dollars, 0) / paperTrades.length
     : 0;
 
-  const grossProfit = paperTrades.reduce((sum, t) => sum + Math.max(0, t.pnl_dollars), 0);
-  const grossLoss = paperTrades.reduce((sum, t) => sum + Math.max(0, -t.pnl_dollars), 0);
+  const grossProfit = paperTrades.reduce(
+    (sum, t) => sum + Math.max(0, t.pnl_dollars),
+    0
+  );
+  const grossLoss = paperTrades.reduce(
+    (sum, t) => sum + Math.max(0, -t.pnl_dollars),
+    0
+  );
   const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : 0;
+
+  // Helper to get experiment metadata
+  const getExperiment = (eid: number) => {
+    const cached = experimentCache.get(eid);
+    if (cached) return cached;
+    // Fallback: fetch on demand
+    return supabase
+      .from('experiments')
+      .select('symbol, interval, rule')
+      .eq('id', eid)
+      .single()
+      .then((r) => r.data ?? null);
+  };
 
   return (
     <div className="space-y-8">
@@ -73,7 +112,7 @@ export default async function PaperTradingPage() {
           </h1>
         </div>
         <p className="text-sm max-w-2xl" style={{ color: TEXT_MUTED }}>
-          Simulated account taking every promoted pattern&apos;s signals, sized at 1% risk/trade with a 10% concurrent
+          Simulated account taking every promoted pattern's signals, sized at 1% risk/trade with a 10% concurrent
           risk cap. Starting equity: {formatUSD(STARTING_EQUITY)}. What matters is the % return, drawdown, and
           whether trusting the whole basket together actually works -- correlated patterns firing together multiply
           risk, not edge.
@@ -136,14 +175,18 @@ export default async function PaperTradingPage() {
             <thead>
               <tr
                 className="border-b text-left text-xs"
-                style={{ borderColor: BORDER, backgroundColor: 'var(--tl-table-header-bg)', color: TEXT_MUTED }}
+                style={{
+                  borderColor: BORDER,
+                  backgroundColor: 'var(--tl-table-header-bg)',
+                  color: TEXT_MUTED,
+                }}
               >
                 <th className="px-4 py-3 font-medium">Symbol</th>
                 <th className="px-4 py-3 font-medium">Rule</th>
-                <th className="px-4 py-3 font-medium">Entry</th>
-                <th className="px-4 py-3 font-medium">Exit</th>
-                <th className="px-4 py-3 font-medium text-right">P&amp;L ($)</th>
-                <th className="px-4 py-3 font-medium text-right">P&amp;L (%)</th>
+                <th className="px-4 py-3 font-medium text-right">Entry</th>
+                <th className="px-4 py-3 font-medium text-right">Exit</th>
+                <th className="px-4 py-3 font-medium text-right">P&L ($)</th>
+                <th className="px-4 py-3 font-medium text-right">P&L (%)</th>
                 <th className="px-4 py-3 font-medium">Exit reason</th>
               </tr>
             </thead>
@@ -151,39 +194,50 @@ export default async function PaperTradingPage() {
               {paperTrades
                 .slice()
                 .reverse()
-                .map((t) => (
-                  <tr
-                    key={t.id}
-                    className="border-b last:border-0 transition-colors hover:bg-[var(--tl-text-primary)]/[0.03]"
-                    style={{ borderColor: BORDER_SOFT }}
-                  >
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="font-medium" style={{ color: TEXT_PRIMARY }}>
-                        {t.symbol} {t.interval}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 max-w-md" style={{ color: TEXT_SECONDARY, fontFamily: 'var(--font-geist-mono)' }}>
-                      <span className="truncate text-xs" title={t.rule}>
-                        {t.rule}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs" style={{ color: TEXT_SECONDARY }}>
-                      {formatDateTime(t.entry_time)}
-                    </td>
-                    <td className="px-4 py-3 text-xs" style={{ color: TEXT_SECONDARY }}>
-                      {formatDateTime(t.exit_time)}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums" style={{ color: t.pnl_dollars >= 0 ? STATUS_GOOD : STATUS_CRITICAL }}>
-                      {t.pnl_dollars >= 0 ? '+' : ''}{formatUSD(t.pnl_dollars)}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums" style={{ color: t.pnl_pct >= 0 ? STATUS_GOOD : STATUS_CRITICAL }}>
-                      {t.pnl_pct >= 0 ? '+' : ''}{formatPct(t.pnl_pct / 100)}
-                    </td>
-                    <td className="px-4 py-3 text-xs" style={{ color: TEXT_MUTED }}>
-                      {t.exit_reason}
-                    </td>
-                  </tr>
-                ))}
+                .map((t) => {
+                  const exp = experimentCache.get(t.experiment_id);
+                  // If experiment metadata not cached, fetch it
+                  let sym = '—', intr = '—', rule = '—';
+                  if (exp) {
+                    sym = exp.symbol;
+                    intr = exp.interval;
+                    rule = exp.rule;
+                  }
+                  return (
+                    <tr
+                      key={t.id}
+                      className="border-b last:border-0 transition-colors hover:bg-[var(--tl-text-primary)]/[0.03]"
+                      style={{ borderColor: BORDER_SOFT }}
+                    >
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className="font-medium" style={{ color: TEXT_PRIMARY }}>
+                          {sym}
+                        </span>
+                        <span style={{ color: TEXT_MUTED, fontSize: '0.75em' }}>{intr}</span>
+                      </td>
+                      <td className="px-4 py-3 max-w-md" style={{ color: TEXT_SECONDARY, fontFamily: 'var(--font-geist-mono)' }}>
+                        <span className="truncate text-xs" title={rule}>
+                          {rule}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs" style={{ color: TEXT_SECONDARY }}>
+                        {formatDateTime(t.entry_time)}
+                      </td>
+                      <td className="px-4 py-3 text-xs" style={{ color: TEXT_SECONDARY }}>
+                        {formatDateTime(t.exit_time)}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums" style={{ color: t.pnl_dollars >= 0 ? STATUS_GOOD : STATUS_CRITICAL }}>
+                        {t.pnl_dollars >= 0 ? '+' : ''}{formatUSD(t.pnl_dollars)}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums" style={{ color: t.pnl_dollars >= 0 ? STATUS_GOOD : STATUS_CRITICAL }}>
+                        {t.pnl_dollars >= 0 ? '+' : ''}{formatPct(t.pnl_dollars / STARTING_EQUITY)}
+                      </td>
+                      <td className="px-4 py-3 text-xs" style={{ color: TEXT_MUTED }}>
+                        {t.exit_reason}
+                      </td>
+                    </tr>
+                  );
+                })}
             </tbody>
           </table>
         </div>
