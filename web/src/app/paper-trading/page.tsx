@@ -1,41 +1,38 @@
-'use client';
-
-import { useEffect, useState } from 'react';
+import { Wallet, ShieldCheck, TrendingDown, Activity, Bell, Zap, Trophy } from 'lucide-react';
 import { supabase, type PaperAccount, type PaperTrade } from '@/lib/supabase';
-import { formatUSD, formatPct, formatNum } from '@/lib/format';
+import { formatUSD, formatPct, formatNum, formatDateTime } from '@/lib/format';
 import { PaperEquityCurve } from '@/components/PaperEquityCurve';
 import { StatTile } from '@/components/StatTile';
-import { Wallet, ShieldCheck, TrendingDown, Activity, Bell, Zap, Trophy } from 'lucide-react';
 import { BannerBackground } from '@/components/BannerBackground';
-import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, STATUS_GOOD, STATUS_CRITICAL, tint } from '@/lib/theme';
-import { formatDateTime } from '@/lib/format';
+import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, BORDER_SOFT, STATUS_GOOD, STATUS_CRITICAL, ACCENT, tint } from '@/lib/theme';
 
 export const dynamic = 'force-dynamic';
 
+// Must match trading_lab/paper_portfolio.py's STARTING_EQUITY.
+const STARTING_EQUITY = 10_000;
+
 export default async function PaperTradingPage() {
   let paperTrades: PaperTrade[] = [];
-  let paperAccount: PaperAccount = { id: 1, equity: 10_000, watermark: null };
+  let paperAccount: PaperAccount = { id: 1, equity: STARTING_EQUITY, watermark: null };
 
   try {
     const [tradesResult, accountResult] = await Promise.all([
       supabase.from('paper_trades').select('*').order('id', { ascending: true }),
-      supabase.from('paper_account').select('*').eq('id', 1).single(),
+      supabase.from('paper_account').select('equity, watermark').eq('id', 1).single(),
     ]);
 
     if (tradesResult.error) throw tradesResult.error;
     if (accountResult.error) throw accountResult.error;
 
-    paperTrades = tradesResult.data ?? [];
-    paperAccount = accountResult.data ?? { id: 1, equity: 10_000, watermark: null };
-  } catch (err) {
+    paperTrades = (tradesResult.data ?? []) as PaperTrade[];
+    paperAccount = (accountResult.data ?? { id: 1, equity: STARTING_EQUITY, watermark: null }) as PaperAccount;
+  } catch (err: any) {
     console.error('Failed to load paper trading data:', err);
-    // Fallback to defaults
-    paperAccount = { id: 1, equity: 10_000, watermark: null };
+    // Fallback to defaults -- the page still renders, just without live data
   }
 
   // Calculate metrics
-  const startingEquity = 10_000;
-  const paperReturnPct = paperAccount.equity / startingEquity - 1;
+  const paperReturnPct = paperAccount.equity / STARTING_EQUITY - 1;
   const paperWinRate = paperTrades.length
     ? paperTrades.filter(t => t.pnl_dollars > 0).length / paperTrades.length
     : null;
@@ -45,295 +42,158 @@ export default async function PaperTradingPage() {
       const peak = Math.max(acc.peak, t.equity_after);
       return { peak, maxDd: Math.min(acc.maxDd, t.equity_after - peak) };
     },
-    { peak: startingEquity, maxDd: 0 },
+    { peak: STARTING_EQUITY, maxDd: 0 },
   ).maxDd;
 
-  // Calculate average trade P&L
   const avgTradePnL = paperTrades.length
     ? paperTrades.reduce((sum, t) => sum + t.pnl_dollars, 0) / paperTrades.length
     : 0;
 
-  // Calculate profit factor (gross profit / gross loss)
   const grossProfit = paperTrades.reduce((sum, t) => sum + Math.max(0, t.pnl_dollars), 0);
   const grossLoss = paperTrades.reduce((sum, t) => sum + Math.max(0, -t.pnl_dollars), 0);
   const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : 0;
 
-  // Auto-refresh every 30 seconds to show new trades
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const tradesResult = await supabase
-          .from('paper_trades')
-          .select('*')
-          .order('id', { ascending: true });
-
-        if (!tradesResult.error && tradesResult.data) {
-          paperTrades = tradesResult.data;
-
-          // Update account equity if needed
-          const accountResult = await supabase
-            .from('paper_account')
-            .select('*')
-            .eq('id', 1)
-            .single();
-
-          if (!accountResult.error && accountResult.data) {
-            paperAccount = accountResult.data;
-          }
-        }
-      } catch (err) {
-        console.warn('Failed to refresh paper trading data:', err);
-      }
-    }, 30_000);
-
-    return () => clearInterval(interval);
-  }, []);
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-800">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12">
-        {/* Header */}
-        <div className="mb-12">
-          <div className="flex items-center justify-between mb-8">
-            <h1 className="text-3xl font-bold text-center">
-              Paper Trading Portfolio
-            </h1>
-            <div className="flex items-center gap-4">
-              <StatTile
-                label="Total Trades"
-                value={paperTrades.length.toString()}
-                icon={Activity}
-              />
-              <StatTile
-                label="Win Rate"
-                value={paperWinRate === null ? '—' : formatPct(paperWinRate)}
-                icon={ShieldCheck}
-                tone={paperWinRate === null ? 'neutral' : paperWinRate > 0.5 ? 'good' : 'bad'}
-              />
-              <StatTile
-                label="Profit Factor"
-                value={profitFactor.toFixed(2)}
-                icon={Trophy}
-                tone={profitFactor > 1.5 ? 'good' : profitFactor > 1 ? 'neutral' : 'bad'}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <StatTile
-              label="Starting Equity"
-              value={formatUSD(startingEquity)}
-              icon={Wallet}
+    <div className="space-y-8">
+      <div
+        className="relative overflow-hidden rounded-2xl px-6 py-10 sm:px-10 sm:py-14 shadow-sm animate-in fade-in duration-700"
+        style={{ border: `1px solid ${BORDER}` }}
+      >
+        <BannerBackground query="trading floor screens paper trading portfolio" />
+        <div className="flex items-center gap-2.5 mb-1.5">
+          <span className="relative inline-flex h-2 w-2" aria-hidden>
+            <span
+              className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75"
+              style={{ backgroundColor: STATUS_GOOD }}
             />
-            <StatTile
-              label="Current Equity"
-              value={formatUSD(paperAccount.equity)}
-              icon={Wallet}
-              tone={paperAccount.equity > startingEquity ? 'good' : paperAccount.equity < startingEquity ? 'bad' : 'neutral'}
-            />
-            <StatTile
-              label="Total Return"
-              value={formatPct(paperReturnPct)}
-              icon={Zap}
-              tone={paperReturnPct > 0 ? 'good' : paperReturnPct < 0 ? 'bad' : 'neutral'}
-            />
-            <StatTile
-              label="Max Drawdown"
-              value={formatUSD(paperMaxDrawdown)}
-              icon={TrendingDown}
-              tone={paperMaxDrawdown < 0 ? 'bad' : 'neutral'}
-            />
-            <StatTile
-              label="Avg P&L/Trade"
-              value={formatUSD(avgTradePnL)}
-              icon={Bell}
-              tone={avgTradePnL > 0 ? 'good' : avgTradePnL < 0 ? 'bad' : 'neutral'}
-            />
-            <StatTile
-              label="Gross Profit/Loss"
-              value={`${formatUSD(grossProfit)} / ${formatUSD(grossLoss)}`}
-              icon={Activity}
-            />
-          </div>
+            <span className="relative inline-flex h-2 w-2 rounded-full" style={{ backgroundColor: STATUS_GOOD }} />
+          </span>
+          <h1 className="text-2xl font-semibold" style={{ color: TEXT_PRIMARY }}>
+            Paper Trading Portfolio
+          </h1>
         </div>
-
-        {/* Main Content */}
-        <div className="grid gap-8">
-          {/* Equity Curve */}
-          <div className="col-span-1 lg:col-span-2">
-            <div className="rounded-xl border border-[var(--border)] bg-white dark:bg-gray-800 shadow-sm">
-              <div className="p-6">
-                <h2 className="text-xl font-semibold mb-4">
-                  Equity Curve
-                </h2>
-                <PaperEquityCurve trades={paperTrades} />
-              </div>
-            </div>
-          </div>
-
-          {/* Recent Trades & Controls */}
-          <div className="col-span-1 lg:col-span-2">
-            <div className="rounded-xl border border-[var(--border)] bg-white dark:bg-gray-800 shadow-sm">
-              <div className="p-6">
-                <h2 className="text-xl font-semibold mb-4">
-                  Recent Trades
-                </h2>
-
-                {paperTrades.length === 0 ? (
-                  <div className="text-center py-12 text-muted">
-                    <p className="mb-4">No paper trades yet.</p>
-                    <p className="text-sm">
-                      Trades will appear here once promoted patterns generate
-                      signals in live trading and the paper account executes them.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {paperTrades
-                      .slice()
-                      .reverse()
-                      .slice(0, 10)
-                      .map((trade) => (
-                        <div
-                          key={trade.id}
-                          className="p-3 rounded-lg border border-[var(--border-light)] bg-[var(--surface)]"
-                        >
-                          <div className="flex justify-between items-start mb-2">
-                            <div className="flex-1 min-w-0">
-                              <h3 className="font-medium text-sm">{trade.symbol} {trade.interval}</h3>
-                              <p className="text-xs text-muted truncate">
-                                {trade.rule}
-                              </p>
-                            </div>
-                            <div className="text-right text-xs space-y-0.5">
-                              <span className="font-medium">
-                                {trade.pnl_dollars >= 0 ? '+' : ''}{formatUSD(trade.pnl_dollars)}
-                              </span>
-                              <span className="text-xs">
-                                ({formatPct(trade.pnl_pct)})
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex justify-between text-xs text-muted">
-                            <span>
-                              Entry: {formatDateTime(trade.entry_time)}
-                            </span>
-                            <span>
-                              Exit: {formatDateTime(trade.exit_time)}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              {trade.exit_reason === 'target' && (
-                                <span className="text-[var(--status-success)]">🎯 Target</span>
-                              )}
-                              {trade.exit_reason === 'stop' && (
-                                <span className="text-[var(--status-error)]">🛑 Stop</span>
-                              )}
-                              {trade.exit_reason === 'time' && (
-                                <span className="text-[var(--status-muted)]">⏰ Time</span>
-                              )}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                )}
-
-                {/* Controls */}
-                {paperTrades.length > 0 && (
-                  <div className="mt-6 pt-4 border-t border-[var(--border-light)]">
-                    <h3 className="text-lg font-semibold mb-3">Paper Account Controls</h3>
-                    <div className="space-y-3">
-                      <button
-                        onClick={async () => {
-                          if (window.confirm('Reset paper trading account to starting equity? This will clear all trade history.')) {
-                            try {
-                              await supabase.from('paper_trades').delete().neq('id', 0);
-                              await supabase
-                                .from('paper_account')
-                                .update({ equity: 10_000, watermark: null })
-                                .eq('id', 1);
-                              window.location.reload();
-                            } catch (err) {
-                              alert('Failed to reset account: ' + err.message);
-                            }
-                          }
-                        }}
-                        className="w-full flex items-center justify-center px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 font-medium rounded-lg border border-red-200"
-                      >
-                        Reset Paper Account
-                      </button>
-
-                      <button
-                        onClick={async () => {
-                          try {
-                            const result = await supabase.rpc('calculate_paper_performance');
-                            alert('Performance recalculated');
-                          } catch (err) {
-                            // Ignore if function doesn't exist
-                          }
-                        }}
-                        className="w-full flex items-center justify-center px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 font-medium rounded-lg border border-blue-200"
-                      >
-                        Recalculate Performance
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Instructions */}
-        <div className="mt-12 rounded-xl border border-[var(--border)] bg-white dark:bg-gray-800">
-          <div className="p-6">
-            <h2 className="text-xl font-semibold mb-4">How Paper Trading Works</h2>
-            <div className="space-y-4">
-              <div className="flex items-start space-x-3">
-                <div className="flex-shrink-0">
-                  <span className="text-[var(--accent)]">1</span>
-                </div>
-                <div>
-                  <h3 className="font-medium text-sm">Signal Generation</h3>
-                  <p className="text-sm text-muted">
-                    Patterns that score 80+/100 in backtesting enter forward tracking.
-                    When they prove themselves in live data, they become "promoted"
-                    and generate trade signals.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start space-x-3">
-                <div className="flex-shrink-0">
-                  <span className="text-[var(--accent)]">2</span>
-                </div>
-                <div>
-                  <h3 className="font-medium text-sm">Trade Execution</h3>
-                  <p className="text-sm text-muted">
-                    The paper account automatically executes every signal from
-                    promoted patterns using 1% risk per trade (fixed fractional
-                    position sizing).
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start space-x-3">
-                <div className="flex-shrink-0">
-                  <span className="text-[var(--accent)]">3</span>
-                </div>
-                <div>
-                  <h3 className="font-medium text-sm">Performance Tracking</h3>
-                  <p className="text-sm text-muted">
-                    All trades are recorded with P&L, win rate, drawdown, and other
-                    metrics to evaluate the strategy's effectiveness before risking
-                    real capital.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <p className="text-sm max-w-2xl" style={{ color: TEXT_MUTED }}>
+          Simulated account taking every promoted pattern&apos;s signals, sized at 1% risk/trade with a 10% concurrent
+          risk cap. Starting equity: {formatUSD(STARTING_EQUITY)}. What matters is the % return, drawdown, and
+          whether trusting the whole basket together actually works -- correlated patterns firing together multiply
+          risk, not edge.
+        </p>
       </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatTile label="Starting Equity" value={formatUSD(STARTING_EQUITY)} icon={Wallet} />
+        <StatTile
+          label="Current Equity"
+          value={formatUSD(paperAccount.equity)}
+          tone={paperAccount.equity > STARTING_EQUITY ? 'good' : paperAccount.equity < STARTING_EQUITY ? 'bad' : 'neutral'}
+          icon={Wallet}
+        />
+        <StatTile
+          label="Total Return"
+          value={formatPct(paperReturnPct)}
+          tone={paperReturnPct > 0 ? 'good' : paperReturnPct < 0 ? 'bad' : 'neutral'}
+          icon={Zap}
+        />
+        <StatTile label="Total Trades" value={String(paperTrades.length)} icon={Activity} />
+        <StatTile
+          label="Max Drawdown"
+          value={formatUSD(paperMaxDrawdown)}
+          tone={paperMaxDrawdown < 0 ? 'bad' : 'neutral'}
+          icon={TrendingDown}
+        />
+        <StatTile
+          label="Win Rate"
+          value={paperWinRate === null ? '—' : formatPct(paperWinRate)}
+          tone={paperWinRate === null ? 'neutral' : paperWinRate > 0.5 ? 'good' : 'bad'}
+          icon={ShieldCheck}
+        />
+        <StatTile
+          label="Avg P&L / Trade"
+          value={formatUSD(avgTradePnL)}
+          tone={avgTradePnL > 0 ? 'good' : avgTradePnL < 0 ? 'bad' : 'neutral'}
+          icon={Bell}
+        />
+        <StatTile
+          label="Profit Factor"
+          value={profitFactor.toFixed(2)}
+          tone={profitFactor > 1.5 ? 'good' : profitFactor > 1 ? 'neutral' : 'bad'}
+          icon={Trophy}
+        />
+      </div>
+
+      {paperTrades.length === 0 ? (
+        <div
+          className="rounded-2xl px-4 py-10 text-center text-sm"
+          style={{ border: `1px solid ${BORDER}`, backgroundColor: SURFACE, color: TEXT_MUTED }}
+        >
+          No paper trades yet -- the paper account only acts on promoted patterns, and none exist yet.
+          Starting equity is {formatUSD(STARTING_EQUITY)} notional; what matters once trades start is the
+          % return, drawdown, and whether trusting the whole basket together actually works.
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-2xl shadow-sm" style={{ border: `1px solid ${BORDER}` }}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr
+                className="border-b text-left text-xs"
+                style={{ borderColor: BORDER, backgroundColor: 'var(--tl-table-header-bg)', color: TEXT_MUTED }}
+              >
+                <th className="px-4 py-3 font-medium">Symbol</th>
+                <th className="px-4 py-3 font-medium">Rule</th>
+                <th className="px-4 py-3 font-medium">Entry</th>
+                <th className="px-4 py-3 font-medium">Exit</th>
+                <th className="px-4 py-3 font-medium text-right">P&amp;L ($)</th>
+                <th className="px-4 py-3 font-medium text-right">P&amp;L (%)</th>
+                <th className="px-4 py-3 font-medium">Exit reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paperTrades
+                .slice()
+                .reverse()
+                .map((t) => (
+                  <tr
+                    key={t.id}
+                    className="border-b last:border-0 transition-colors hover:bg-[var(--tl-text-primary)]/[0.03]"
+                    style={{ borderColor: BORDER_SOFT }}
+                  >
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className="font-medium" style={{ color: TEXT_PRIMARY }}>
+                        {t.symbol} {t.interval}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 max-w-md" style={{ color: TEXT_SECONDARY, fontFamily: 'var(--font-geist-mono)' }}>
+                      <span className="truncate text-xs" title={t.rule}>
+                        {t.rule}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs" style={{ color: TEXT_SECONDARY }}>
+                      {formatDateTime(t.entry_time)}
+                    </td>
+                    <td className="px-4 py-3 text-xs" style={{ color: TEXT_SECONDARY }}>
+                      {formatDateTime(t.exit_time)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums" style={{ color: t.pnl_dollars >= 0 ? STATUS_GOOD : STATUS_CRITICAL }}>
+                      {t.pnl_dollars >= 0 ? '+' : ''}{formatUSD(t.pnl_dollars)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums" style={{ color: t.pnl_pct >= 0 ? STATUS_GOOD : STATUS_CRITICAL }}>
+                      {t.pnl_pct >= 0 ? '+' : ''}{formatPct(t.pnl_pct / 100)}
+                    </td>
+                    <td className="px-4 py-3 text-xs" style={{ color: TEXT_MUTED }}>
+                      {t.exit_reason}
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {paperTrades.length > 0 && (
+        <div className="rounded-2xl p-4 shadow-sm" style={{ backgroundColor: SURFACE, border: `1px solid ${BORDER}` }}>
+          <PaperEquityCurve trades={paperTrades} />
+        </div>
+      )}
     </div>
   );
 }
