@@ -146,10 +146,10 @@ async function fetchAlpacaCandles(symbol: string, interval: string, start: Date,
 /** Historical candles for symbol/interval between start and end (inclusive), sourced
  * from Coinbase (crypto) or Alpaca (stocks) depending on `source`. Cached per the
  * Next.js fetch cache for fixed historical ranges; skips the cache when `end` is
- * within 2 hours of now (i.e. a live/rolling window that changes every refresh).
+ * within 6 hours of now (covers 4h gaps/timezone differences).
  */
 export async function getCandles(symbol: string, interval: string, source: string, start: Date, end: Date): Promise<Candle[]> {
-  const isLive = Date.now() - end.getTime() < 2 * 60 * 60 * 1000; // end is within 2h of now
+  const isLive = Date.now() - end.getTime() < 6 * 60 * 60 * 1000; // end is within 6h of now (covers 4h gaps/timezone differences)
   const revalidate = isLive ? 0 : 2592000;
   return source === "stocks"
     ? fetchAlpacaCandles(symbol, interval, start, end, revalidate)
