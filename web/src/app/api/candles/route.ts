@@ -17,5 +17,8 @@ export async function GET(request: Request) {
   }
 
   const candles = await getCandles(symbol, interval, source, new Date(start), new Date(end));
-  return NextResponse.json({ candles });
+  const response = NextResponse.json({ candles });
+  // Prevent caching of live data
+  response.headers.set("Cache-Control", "no-store, max-age=0");
+  return response;
 }

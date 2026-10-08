@@ -10,7 +10,7 @@ import type { ExperimentTrade, ClauseJson } from "@/lib/supabase";
 import { detectDivergences, type DivergenceEvent } from "@/lib/structure";
 import { computeFeatureSeries, evaluateSignal } from "@/lib/indicators";
 import { DivergenceBandPrimitive } from "./chartPrimitives";
-import { windowedRange } from "@/lib/chartWindow";
+import { windowedRange, TIMEFRAME_WINDOW_DAYS } from "@/lib/chartWindow";
 import { TEXT_MUTED, TEXT_SECONDARY, TEXT_PRIMARY, CHART_AMBER, CHART_BLUE, CHART_TEAL, SURFACE, BORDER, ACCENT } from "@/lib/theme";
 
 // Canvas (what lightweight-charts renders to) doesn't understand CSS custom property

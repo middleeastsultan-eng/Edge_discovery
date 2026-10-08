@@ -1,4 +1,4 @@
-import { Activity, Zap } from "lucide-react";
+import { Activity, Zap, Clock } from "lucide-react";
 import { supabase, type StructureDivergenceAlert } from "@/lib/supabase";
 import { PatternChart } from "@/components/PatternChart";
 import { BannerBackground } from "@/components/BannerBackground";
@@ -6,6 +6,7 @@ import { formatDateTime } from "@/lib/format";
 import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, SURFACE, BORDER, STATUS_GOOD, STATUS_CRITICAL, tint } from "@/lib/theme";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0; // never cache -- the page must reflect the current wall-clock time and live candle data on every visit
 
 // How fresh a divergence alert has to be to still show as a "just happened" banner,
 // rather than just sitting in history -- this page refreshes its own chart every 60s,
@@ -68,6 +69,10 @@ export default async function LiveChartPage() {
       })()}
 
       <div className="rounded-2xl p-4 shadow-sm" style={{ backgroundColor: SURFACE, border: `1px solid ${BORDER}` }}>
+        <div className="flex items-center gap-1.5 mb-3 text-xs" style={{ color: TEXT_SECONDARY }}>
+          <Clock size={13} />
+          <span>Current time: {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true })}</span>
+        </div>
         <PatternChart
           candles={[]}
           trades={[]}
