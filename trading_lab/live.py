@@ -48,7 +48,7 @@ RETENTION_MIN = 0.5
 # score_label bands. Deliberately below a perfect 100: a pattern that backtested well but
 # not perfectly still deserves a real-world shot, since live performance (not backtest
 # score) is what actually earns a pattern the right to alert.
-TRACKING_MIN_SCORE = 80.0
+TRACKING_MIN_SCORE = 75.0
 
 # One-sided bootstrap confidence level required on forward expectancy to promote --
 # "statistically unlikely to be luck," not just "the raw mean happens to be positive."
