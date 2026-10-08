@@ -211,9 +211,9 @@ def _run_one_config(
     )
     db.record_forward_check(
         experiment_id, check_result.status,
-        check_result.forward_stats.n_trades,
-        check_result.forward_stats.expectancy_r,
-        check_result.lower_bound_r,
+        int(check_result.forward_stats.n_trades),
+        float(check_result.forward_stats.expectancy_r),
+        float(check_result.lower_bound_r),
     )
 
     print(
