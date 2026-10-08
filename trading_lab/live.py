@@ -165,6 +165,10 @@ def check_pattern(experiment_row: dict, feats: pd.DataFrame, config: BacktestCon
     final bar -- so `signal.iloc[-1]` being True means "fired, but not yet actionable
     until the next bar opens," with zero risk of double-counting it once it does close
     and shows up in `trades` on a later call.
+
+    If experiment_row has "_candidate_override", that object's .signal() is used instead
+    of building a Candidate from clauses. This allows structural (non-clause) strategies
+    like divergence to work through the same forward-tracking pipeline.
     """
     experiment_id = int(experiment_row["id"])
 
@@ -172,8 +176,14 @@ def check_pattern(experiment_row: dict, feats: pd.DataFrame, config: BacktestCon
         forward_stats = compute_stats([])
         return CheckResult(experiment_id, False, None, forward_stats, "tracking", 0, float("-inf"))
 
-    candidate = Candidate(clauses=[Clause(**c) for c in experiment_row["clauses"]])
-    signal = candidate.signal(feats)
+    # Use custom candidate if provided (e.g. divergence strategy)
+    cand = experiment_row.get("_candidate_override")
+    if cand is not None:
+        signal = cand.signal(feats)
+    else:
+        candidate = Candidate(clauses=[Clause(**c) for c in experiment_row["clauses"]])
+        signal = candidate.signal(feats)
+
     direction = experiment_row.get("direction", "long")
     bt_config = dataclasses.replace(config, direction=direction) if direction != "long" else config
     trades = run_backtest(feats, signal, bt_config)

@@ -770,6 +770,78 @@ def rule_already_cleared_bar(symbol: str, interval: str, source: str, rule: str,
             return cur.fetchone() is not None
 
 
+def upsert_divergence_experiment(
+    leader_symbol: str,
+    follower_symbol: str,
+    interval: str,
+    start_date: str,
+    end_date: str,
+    direction: str,
+    rule: str,
+    discovery_stats: dict,
+    validation_stats: dict,
+    test_stats: dict,
+    walk_forward: pd.DataFrame | None,
+    monte_carlo: dict | None,
+    cost_stress: pd.DataFrame | None,
+    robustness_score: dict,
+    source: str = "stocks",
+) -> int:
+    """Insert or return the existing experiment row for this divergence rule.
+
+    Uses (symbol, interval, source, rule) as the natural key -- if the exact
+    same divergence config was already registered, return its id rather than
+    creating a duplicate. This makes the live runner idempotent: call it on
+    every schedule tick without bloating the experiments table.
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            # Check for existing row first
+            cur.execute(
+                """
+                SELECT id FROM experiments
+                WHERE symbol = %s AND interval = %s AND source = %s AND rule = %s
+                  AND origin = 'divergence'
+                LIMIT 1
+                """,
+                (leader_symbol, interval, source, rule),
+            )
+            row = cur.fetchone()
+            if row is not None:
+                return int(row[0])
+
+            # New row
+            cur.execute(
+                """
+                INSERT INTO experiments
+                    (symbol, interval, start_date, end_date, rule, clauses,
+                     discovery_stats, validation_stats, test_stats, walk_forward,
+                     monte_carlo, cost_stress, parameter_stability, robustness_score,
+                     source, origin, direction)
+                VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    leader_symbol, interval, start_date, end_date, rule,
+                    json.dumps([]),                                   # no clauses
+                    json.dumps(_json_safe(discovery_stats)),
+                    json.dumps(_json_safe(validation_stats)),
+                    json.dumps(_json_safe(test_stats)),
+                    _df_to_json(walk_forward),
+                    json.dumps(_json_safe(monte_carlo)) if monte_carlo else None,
+                    _df_to_json(cost_stress),
+                    json.dumps({"score": 1.0, "perturbations": []}),  # structural — no perturb
+                    json.dumps(_json_safe(robustness_score)),
+                    source,
+                    "divergence",
+                    direction,
+                ),
+            )
+            experiment_id = cur.fetchone()[0]
+        conn.commit()
+    return experiment_id
+
+
 def get_promoted_patterns_with_promotion_time() -> pd.DataFrame:
     """Every pattern currently promoted, with the timestamp it earned that status --
     trades that closed before promoted_at don't count (that would be hindsight bias:

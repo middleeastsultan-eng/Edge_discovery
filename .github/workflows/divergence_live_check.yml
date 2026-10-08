@@ -1,0 +1,42 @@
+name: Divergence Live Check
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      interval:
+        description: "Alpaca interval (1Min, 5Min, 15Min, 30Min, 1Hour, 1Day)"
+        required: false
+        default: "15Min"
+      leader:
+        description: "Limit to one leader (QQQ or SPY, leave empty for both)"
+        required: false
+        default: ""
+      direction:
+        description: "Limit to one direction (long or short, leave empty for both)"
+        required: false
+        default: ""
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run divergence live check
+        run: |
+          CMD="python run_divergence_live.py --interval ${{ inputs.interval }} --start 2020-01-01 --end $(date -u +%Y-%m-%d)"
+          if [ -n "${{ inputs.leader }}" ]; then CMD="$CMD --leader ${{ inputs.leader }}"; fi
+          if [ -n "${{ inputs.direction }}" ]; then CMD="$CMD --direction ${{ inputs.direction }}"; fi
+          eval $CMD

@@ -56,28 +56,37 @@ def main():
         feats_follower = build_features(raw_follower, raw_leader)
 
         # Run validation
+        follower = "SPY" if leader == "QQQ" else "QQQ"
         result = validate_divergence_strategy(
             feats_leader,
             feats_follower,
-            instrument,
+            leader,
+            follower,
             lookback=args.lookback,
             window=args.window,
-            sl_atr=args.sl_atr,
-            tp_atr=args.tp_atr,
-            max_holding_bars=args.max_holding_bars,
+        )
+
+        follower = "SPY" if leader == "QQQ" else "QQQ"
+        result = validate_divergence_strategy(
+            feats_leader,
+            feats_follower,
+            leader,
+            follower,
+            lookback=args.lookback,
+            window=args.window,
         )
 
         print(f"\n=== Divergence Strategy: {instrument} {args.interval} ===")
-        print(f"Discovery trades: {result['discovery_trades']}")
-        print(f"Validation trades: {result['validation_trades']}")
-        print(f"Test trades: {result['test_trades']}")
+        print(f"Discovery trades: {result.get('n_disc_trades', result['validation_trades'].shape[0])}")
+        print(f"Validation trades: {result.get('n_val_trades', result['validation_trades'].shape[0])}")
+        print(f"Test trades: {result.get('n_test_trades', result['test_trades'].shape[0])}")
 
         ds = result['discovery_stats']
         vs = result['validation_stats']
         ts = result['test_stats']
-        print(f"\nDiscovery:   {ds['n_trades']} trades, {ds['win_rate']:.1%} WR, {ds['expectancy_r']:.3f}R exp, {ds['profit_factor']:.2f} PF")
-        print(f"Validation:  {vs['n_trades']} trades, {vs['win_rate']:.1%} WR, {vs['expectancy_r']:.3f}R exp, {vs['profit_factor']:.2f} PF")
-        print(f"Test:        {ts['n_trades']} trades, {ts['win_rate']:.1%} WR, {ts['expectancy_r']:.3f}R exp, {ts['profit_factor']:.2f} PF")
+        print(f"\nDiscovery:   {ds.n_trades} trades, {ds.win_rate:.1%} WR, {ds.expectancy_r:.3f}R exp, {ds.profit_factor:.2f} PF")
+        print(f"Validation:  {vs.n_trades} trades, {vs.win_rate:.1%} WR, {vs.expectancy_r:.3f}R exp, {vs.profit_factor:.2f} PF")
+        print(f"Test:        {ts.n_trades} trades, {ts.win_rate:.1%} WR, {ts.expectancy_r:.3f}R exp, {ts.profit_factor:.2f} PF")
 
         score = result['robustness_score']
         print(f"\nRobustness Score: {score['total']}/100 ({score['label']})")
@@ -94,7 +103,7 @@ def main():
             send_message(
                 f"Divergence strategy cleared bar ({instrument} {args.interval})\n\n"
                 f"Robustness: {score['total']}/100 ({score['label']})\n"
-                f"Test: {ts['n_trades']} trades, {ts['win_rate']:.1%} WR, {ts['expectancy_r']:.3f}R exp\n\n"
+                f"Test: {ts.n_trades} trades, {ts.win_rate:.1%} WR, {ts.expectancy_r:.3f}R exp\n\n"
                 f"Structural edge: {leader} BOS divergence → {follower} confirmation.\n"
                 f"{link}"
             )
