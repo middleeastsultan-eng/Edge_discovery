@@ -36,7 +36,7 @@ jobs:
 
       - name: Run divergence live check
         run: |
-          CMD="python run_divergence_live.py --interval ${{ inputs.interval }} --start 2020-01-01 --end $(date -u +%Y-%m-%d)"
+          CMD="python run_divergence_live.py --interval ${{ inputs.interval || '15Min' }} --start 2020-01-01 --end $(date -u +%Y-%m-%d)"
           if [ -n "${{ inputs.leader }}" ]; then CMD="$CMD --leader ${{ inputs.leader }}"; fi
           if [ -n "${{ inputs.direction }}" ]; then CMD="$CMD --direction ${{ inputs.direction }}"; fi
           eval $CMD
