@@ -108,7 +108,7 @@ async function fetchCoinbaseCandles(symbol: string, interval: string, start: Dat
 
 // Alpaca timeframe strings ("15Min", "1Hour", "1Day" etc.) are already native to its
 // API -- no resampling needed, unlike Coinbase.
-async function fetchAlpacaCandles(symbol: string, interval: string, start: Date, end: Date): Promise<Candle[]> {
+async function fetchAlpacaCandles(symbol: string, interval: string, start: Date, end: Date, revalidate = 2592000): Promise<Candle[]> {
   const apiKey = process.env.ALPACA_API_KEY;
   const apiSecret = process.env.ALPACA_API_SECRET;
   if (!apiKey || !apiSecret) return [];
@@ -127,7 +127,7 @@ async function fetchAlpacaCandles(symbol: string, interval: string, start: Date,
 
     const res = await fetch(url, {
       headers: { "APCA-API-KEY-ID": apiKey, "APCA-API-SECRET-KEY": apiSecret },
-      next: { revalidate: 2592000 }, // same fixed-historical-range reasoning as the Coinbase path
+      next: { revalidate }, // 30-day cache for fixed historical ranges; pass 0 for live/rolling windows
     });
     if (!res.ok) break;
     const data = await res.json();
@@ -145,11 +145,14 @@ async function fetchAlpacaCandles(symbol: string, interval: string, start: Date,
 
 /** Historical candles for symbol/interval between start and end (inclusive), sourced
  * from Coinbase (crypto) or Alpaca (stocks) depending on `source`. Cached per the
- * Next.js fetch cache -- a historical range that already happened never changes.
+ * Next.js fetch cache for fixed historical ranges; skips the cache when `end` is
+ * within 2 hours of now (i.e. a live/rolling window that changes every refresh).
  */
 export async function getCandles(symbol: string, interval: string, source: string, start: Date, end: Date): Promise<Candle[]> {
+  const isLive = Date.now() - end.getTime() < 2 * 60 * 60 * 1000; // end is within 2h of now
+  const revalidate = isLive ? 0 : 2592000;
   return source === "stocks"
-    ? fetchAlpacaCandles(symbol, interval, start, end)
+    ? fetchAlpacaCandles(symbol, interval, start, end, revalidate)
     : fetchCoinbaseCandles(symbol, interval, start, end);
 }
 
