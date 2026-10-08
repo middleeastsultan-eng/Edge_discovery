@@ -232,9 +232,6 @@ export default async function PaperTradingPage() {
                       <td className="px-4 py-3 text-right tabular-nums" style={{ color: t.pnl_dollars >= 0 ? STATUS_GOOD : STATUS_CRITICAL }}>
                         {t.pnl_dollars >= 0 ? '+' : ''}{formatPct(t.pnl_dollars / STARTING_EQUITY)}
                       </td>
-                      <td className="px-4 py-3 text-xs" style={{ color: TEXT_MUTED }}>
-                        {t.exit_reason}
-                      </td>
                     </tr>
                   );
                 })}
