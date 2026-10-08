@@ -135,7 +135,8 @@ def search(
     rng = np.random.default_rng(seed)
     candidates = []
     signals = []
-    info_results = []
+    info_results = []        # ALL info results -- used for BH correction and funnel counts
+    candidate_infos = []     # parallel to candidates/signals/directions -- only actionable entries
     directions = []
 
     # Generate half long, half short candidates
@@ -150,16 +151,17 @@ def search(
             info = test_information(df, signal, horizon=information_horizon, min_observations=min_trades)
             if info is not None:
                 info["direction"] = direction
-                # For short candidates, we want the condition to predict NEGATIVE returns
-                # (so we can profit from shorting). The information test checks for any
-                # distributional shift; we need to verify the direction is favorable for shorting.
+                # For short candidates, we want the condition to predict NEGATIVE returns.
+                # A positive "difference" means the condition predicts upward moves -- wrong
+                # direction for shorting. Record it for BH correction and funnel counts but
+                # don't add it to candidates/signals/directions so it never reaches the backtest gate.
                 if direction == "short" and info["difference"] > 0:
-                    # Condition predicts upward moves -- not useful for shorting
-                    # but still record as statistically interesting
                     info["label"] = "STATISTICALLY_INTERESTING"
+                    info_results.append(info)
                     continue
                 candidates.append(candidate)
                 signals.append(signal)
+                candidate_infos.append(info)
                 info_results.append(info)
                 directions.append(direction)
 
@@ -184,7 +186,7 @@ def search(
     }
 
     results = []
-    for candidate, signal, info, direction in zip(candidates, signals, info_results, directions):
+    for candidate, signal, info, direction in zip(candidates, signals, candidate_infos, directions):
         if info["label"] != "RESEARCH_WORTHY":
             continue
 

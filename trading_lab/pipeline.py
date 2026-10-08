@@ -67,7 +67,7 @@ def run_experiment(
     start: str,
     end: str,
     n_candidates: int = 3000,
-    discovery_min_trades: int = 100,
+    discovery_min_trades: int = 30,
     validation_min_trades: int = 30,
     test_min_trades: int = 30,
     funnel_top_k: int = 30,

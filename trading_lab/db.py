@@ -364,7 +364,7 @@ def save_experiment(
                      discovery_stats, validation_stats, test_stats, walk_forward, monte_carlo,
                      cost_stress, parameter_stability, robustness_score, research_run_id, information_test, source,
                      origin, reddit_strategy_id, direction)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
