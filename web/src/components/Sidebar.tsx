@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FlaskConical, Activity, Radio, Users, Circle, CandlestickChart } from "lucide-react";
+import { FlaskConical, Activity, Radio, Users, Circle, CandlestickChart, Wallet } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import type { AgentSettings } from "@/lib/supabase";
 import { TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, BORDER, STATUS_GOOD, STATUS_CRITICAL, ACCENT, tint } from "@/lib/theme";
@@ -13,6 +13,7 @@ const LINKS = [
   { href: "/research", label: "Research Health", icon: Activity },
   { href: "/live", label: "Live Signals", icon: Radio },
   { href: "/live-chart", label: "Live Chart", icon: CandlestickChart },
+  { href: "/paper-trading", label: "Paper Trading", icon: Wallet },
   { href: "/community", label: "Community", icon: Users },
 ];
 

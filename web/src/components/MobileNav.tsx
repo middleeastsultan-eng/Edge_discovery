@@ -11,6 +11,7 @@ const LINKS = [
   { href: "/research", label: "Research Health" },
   { href: "/live", label: "Live Signals" },
   { href: "/live-chart", label: "Live Chart" },
+  { href: "/paper-trading", label: "Paper Trading" },
   { href: "/community", label: "Community" },
 ];
 

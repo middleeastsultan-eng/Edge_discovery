@@ -31,24 +31,28 @@ jobs:
             start: "2020-08-01"
             end: "2026-01-01"
             n_candidates: 800
+            discovery-min-trades: 30
           - source: stocks
             symbol: SPY
             interval: 1Hour
             start: "2020-08-01"
             end: "2026-01-01"
             n_candidates: 1500
+            discovery-min-trades: 30
           - source: stocks
             symbol: QQQ
             interval: 15Min
             start: "2020-08-01"
             end: "2026-01-01"
             n_candidates: 800
+            discovery-min-trades: 30
           - source: stocks
             symbol: QQQ
             interval: 1Hour
             start: "2020-08-01"
             end: "2026-01-01"
             n_candidates: 1500
+            discovery-min-trades: 30
           # 1-minute: the platform's main current focus -- bounded to the last ~2 years
           # (not the full history) to keep fetch + backtest tractable, but with a much
           # larger candidate budget than before now that it's not sharing the matrix
